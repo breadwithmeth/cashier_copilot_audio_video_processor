@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 cashier-av-daemon = "cashier_av_processor.daemon:main"
+cashier-overlay-stream = "cashier_av_processor.overlay_stream:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

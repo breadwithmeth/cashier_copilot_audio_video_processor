@@ -4,3 +4,5 @@ __pycache__/
 .env
 clips/
 spool/
+hls/
+.matplotlib_cache/
