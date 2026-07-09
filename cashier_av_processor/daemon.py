@@ -6,6 +6,7 @@ import signal
 import sys
 import time
 
+from .analytics_client import register_analytics_stream
 from .audio_stt import AudioSTTWorker
 from .clip_exporter import ClipExporter
 from .config import AppConfig
@@ -45,6 +46,7 @@ def build_processes(config: AppConfig, stop_event: multiprocessing.Event) -> lis
             db_dsn=config.db_dsn,
             stop_event=stop_event,
             model_path=config.yolo_model_path,
+            device=config.yolo_device,
             spool_dir=config.spool_dir,
             profile_interval_s=config.yolo_profile_interval_s,
         ),
@@ -93,6 +95,8 @@ def run_daemon(config: AppConfig) -> int:
     config.clip_output_dir.mkdir(parents=True, exist_ok=True)
     config.spool_dir.mkdir(parents=True, exist_ok=True)
 
+    register_analytics_stream(config, status="online")
+
     processes = build_processes(config, stop_event)
     for process in processes:
         process.start()
@@ -116,6 +120,7 @@ def run_daemon(config: AppConfig) -> int:
                 process.terminate()
         for process in processes:
             process.join(timeout=5)
+        register_analytics_stream(config, status="offline")
 
     return 0
 

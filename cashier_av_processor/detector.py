@@ -48,11 +48,13 @@ class YoloDetector:
         spool_dir: Path | str = "spool",
         weights_version: Optional[str] = None,
         roi_reload_interval_s: float = 60.0,
+        device: str = "cpu",
     ) -> None:
         from ultralytics import YOLO
 
+        self.device = device
         self.model = YOLO(model_path)
-        self.model.to("cuda")
+        self.model.to(device)
         self.model_path = model_path
         self.model_name = "yolov11-cashier"
         self.weights_version = weights_version or Path(model_path).name
@@ -416,6 +418,7 @@ class YoloInferenceProcess(multiprocessing.Process):
         db_dsn: str,
         stop_event: multiprocessing.Event,
         model_path: str = "yolov11x.pt",
+        device: str = "cpu",
         spool_dir: Path | str = "spool",
         profile_interval_s: float = 10.0,
     ) -> None:
@@ -424,6 +427,7 @@ class YoloInferenceProcess(multiprocessing.Process):
         self.db_dsn = db_dsn
         self.stop_event = stop_event
         self.model_path = model_path
+        self.device = device
         self.spool_dir = Path(spool_dir)
         self.profile_interval_s = profile_interval_s
 
@@ -436,7 +440,7 @@ class YoloInferenceProcess(multiprocessing.Process):
             format="%(asctime)s %(levelname)s %(processName)s %(name)s: %(message)s",
         )
         db = DatabaseClient(self.db_dsn)
-        detector = YoloDetector(self.model_path, db, self.spool_dir)
+        detector = YoloDetector(self.model_path, db, self.spool_dir, device=self.device)
         inference_times: list[float] = []
         next_profile_at = time.monotonic() + self.profile_interval_s
 
@@ -471,18 +475,22 @@ class YoloInferenceProcess(multiprocessing.Process):
 
                 now = time.monotonic()
                 if now >= next_profile_at:
-                    self._log_profile(inference_times)
+                    self._log_profile(inference_times, self.device)
                     inference_times.clear()
                     next_profile_at = now + self.profile_interval_s
         finally:
             db.close()
 
     @staticmethod
-    def _log_profile(inference_times: list[float]) -> None:
+    def _log_profile(inference_times: list[float], device: str) -> None:
         if inference_times:
             avg = statistics.fmean(inference_times)
         else:
             avg = 0.0
+
+        if not device.startswith("cuda"):
+            logger.info("YOLO profile avg_inference_time_ms=%.2f device=%s", avg, device)
+            return
 
         gpu_info = "unavailable"
         try:
@@ -495,4 +503,4 @@ class YoloInferenceProcess(multiprocessing.Process):
         except Exception:
             logger.debug("GPU memory profiling unavailable", exc_info=True)
 
-        logger.info("YOLO profile avg_inference_time_ms=%.2f gpu=%s", avg, gpu_info)
+        logger.info("YOLO profile avg_inference_time_ms=%.2f device=%s gpu=%s", avg, device, gpu_info)

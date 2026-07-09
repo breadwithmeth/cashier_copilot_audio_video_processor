@@ -7,5 +7,6 @@ __all__ = [
     "detector",
     "clip_exporter",
     "audio_stt",
+    "analytics_client",
     "daemon",
 ]

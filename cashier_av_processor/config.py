@@ -67,6 +67,7 @@ class AppConfig:
     pos_id: str
     audio_source: str
     yolo_model_path: str = "yolov11x.pt"
+    yolo_device: str = "cpu"
     fps: int = 25
     inference_stride: int = 5
     buffer_seconds: int = 120
@@ -85,8 +86,13 @@ class AppConfig:
     audio_end_silence_ms: int = 1500
     audio_max_segment_ms: int = 30000
     whisper_model_name: str = "small"
-    whisper_device: str = "cuda"
-    whisper_compute_type: str = "float16"
+    whisper_device: str = "cpu"
+    whisper_compute_type: str = "int8"
+    analytics_api_base_url: str = ""
+    analytics_api_key: str = ""
+    analytics_stream_url: str = ""
+    analytics_stream_type: str = "hls"
+    analytics_register_timeout_s: float = 5.0
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -102,6 +108,10 @@ class AppConfig:
             raise ValueError("RTSP_URL is required")
 
         pos_id = os.getenv("POS_ID") or camera_id
+        analytics_stream_base_url = os.getenv("ANALYTICS_STREAM_BASE_URL", "http://127.0.0.1:8888")
+        analytics_stream_url = os.getenv("ANALYTICS_STREAM_URL") or (
+            f"{analytics_stream_base_url.rstrip('/')}/{camera_id}/index.m3u8"
+        )
 
         return cls(
             db_dsn=db_dsn,
@@ -110,6 +120,7 @@ class AppConfig:
             pos_id=pos_id,
             audio_source=os.getenv("AUDIO_SOURCE") or rtsp_url,
             yolo_model_path=os.getenv("YOLO_MODEL_PATH", "yolov11x.pt"),
+            yolo_device=os.getenv("YOLO_DEVICE", "cpu"),
             fps=_int_env("VIDEO_FPS", 25),
             inference_stride=_int_env("INFERENCE_STRIDE", 5),
             buffer_seconds=_int_env("BUFFER_SECONDS", 120),
@@ -128,6 +139,11 @@ class AppConfig:
             audio_end_silence_ms=_int_env("AUDIO_END_SILENCE_MS", 1500),
             audio_max_segment_ms=_int_env("AUDIO_MAX_SEGMENT_MS", 30000),
             whisper_model_name=os.getenv("WHISPER_MODEL_NAME", "small"),
-            whisper_device=os.getenv("WHISPER_DEVICE", "cuda"),
-            whisper_compute_type=os.getenv("WHISPER_COMPUTE_TYPE", "float16"),
+            whisper_device=os.getenv("WHISPER_DEVICE", "cpu"),
+            whisper_compute_type=os.getenv("WHISPER_COMPUTE_TYPE", "int8"),
+            analytics_api_base_url=os.getenv("ANALYTICS_API_BASE_URL", ""),
+            analytics_api_key=os.getenv("ANALYTICS_API_KEY", ""),
+            analytics_stream_url=analytics_stream_url,
+            analytics_stream_type=os.getenv("ANALYTICS_STREAM_TYPE", "hls"),
+            analytics_register_timeout_s=_float_env("ANALYTICS_REGISTER_TIMEOUT_S", 5.0),
         )

@@ -16,7 +16,7 @@ The daemon starts four isolated Python processes through `multiprocessing`:
    Captures RTSP video, stores a configurable RAM ring buffer, JPEG-compresses every frame, and sends every fifth frame to the inference queue.
 
 2. `YoloInferenceProcess`
-   Reads frames from `inference_queue`, runs YOLO on CUDA, loads ROI polygons from PostgreSQL, checks object locations with Shapely, and inserts rows into `cv_events`.
+   Reads frames from `inference_queue`, runs YOLO on the configured device, loads ROI polygons from PostgreSQL, checks object locations with Shapely, and inserts rows into `cv_events`.
 
 3. `ClipExporterProcess`
    Polls `tasks` for pending `video_export` jobs, requests the relevant buffered frames from the video process through IPC queues, and writes MP4 files.
@@ -37,7 +37,7 @@ RTSP video
 
 inference_queue
   -> YoloInferenceProcess
-      -> YOLOv11 CUDA
+      -> YOLOv11 CPU/GPU
       -> Shapely ROI checks
       -> PostgreSQL cv_events
 
@@ -85,7 +85,7 @@ Python:
 System:
 
 - FFmpeg available in `PATH`
-- NVIDIA GPU and CUDA runtime for `YOLO_MODEL_PATH` and Faster-Whisper when `WHISPER_DEVICE=cuda`
+- CPU runtime by default, or NVIDIA GPU/CUDA if `YOLO_DEVICE=cuda` and `WHISPER_DEVICE=cuda`
 - Network access to PostgreSQL and camera RTSP endpoints
 - Write access to `CLIP_OUTPUT_DIR` and `SPOOL_DIR`
 
@@ -124,6 +124,7 @@ Optional values:
 
 ```dotenv
 YOLO_MODEL_PATH=yolov11x.pt
+YOLO_DEVICE=cpu
 CLIP_OUTPUT_DIR=clips
 SPOOL_DIR=spool
 VIDEO_FPS=25
@@ -135,11 +136,23 @@ TASK_POLL_INTERVAL_S=1.0
 CLIP_RESPONSE_TIMEOUT_S=15.0
 YOLO_PROFILE_INTERVAL_S=10.0
 WHISPER_MODEL_NAME=small
-WHISPER_DEVICE=cuda
-WHISPER_COMPUTE_TYPE=float16
+WHISPER_DEVICE=cpu
+WHISPER_COMPUTE_TYPE=int8
+ANALYTICS_API_BASE_URL=http://127.0.0.1:8085
+ANALYTICS_API_KEY=<analytics-api-key>
+ANALYTICS_STREAM_BASE_URL=http://127.0.0.1:8888
+ANALYTICS_STREAM_URL=
+ANALYTICS_STREAM_TYPE=hls
+ANALYTICS_REGISTER_TIMEOUT_S=5
 ```
 
 `DB_DSN` is also supported instead of separate `DB_HOST`, `DB_PORT`, `DB_SSLMODE`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`.
+
+If `ANALYTICS_STREAM_URL` is empty, it is derived from `ANALYTICS_STREAM_BASE_URL` and `CAMERA_ID`:
+
+```text
+<ANALYTICS_STREAM_BASE_URL>/<CAMERA_ID>/index.m3u8
+```
 
 Audio source:
 
@@ -161,6 +174,45 @@ cashier-av-daemon
 ```
 
 Stop with `Ctrl+C` or `SIGTERM`. The parent process sets a shared stop event, waits for workers, and terminates workers that do not exit in time.
+
+## Backend Stream Registration
+
+The daemon can notify the Go backend where the analytics overlay stream is available. On startup it sends `online`; during normal shutdown it sends `offline`.
+
+Endpoint:
+
+```text
+POST /api/v1/analytics/cameras/<camera_id>/stream
+```
+
+Headers:
+
+```text
+X-API-Key: <analytics-api-key>
+Content-Type: application/json
+```
+
+Payload:
+
+```json
+{
+  "analytics_stream_url": "http://127.0.0.1:8888/<camera_id>/index.m3u8",
+  "analytics_stream_type": "hls",
+  "analytics_stream_status": "online"
+}
+```
+
+Manual check:
+
+```bash
+STREAM_URL="${ANALYTICS_STREAM_URL:-$ANALYTICS_STREAM_BASE_URL/$CAMERA_ID/index.m3u8}"
+curl -X POST "$ANALYTICS_API_BASE_URL/api/v1/analytics/cameras/$CAMERA_ID/stream" \
+  -H "X-API-Key: $ANALYTICS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"analytics_stream_url\":\"$STREAM_URL\",\"analytics_stream_type\":\"$ANALYTICS_STREAM_TYPE\",\"analytics_stream_status\":\"online\"}"
+```
+
+The stream registration request is best-effort: failure to reach the backend is logged but does not stop video capture or analytics workers.
 
 ## Database Schema
 
@@ -434,8 +486,18 @@ If frame spacing exceeds the target interval, the process logs a capture lag war
 The detector loads:
 
 ```python
-YOLO(YOLO_MODEL_PATH).to("cuda")
+YOLO(YOLO_MODEL_PATH).to(YOLO_DEVICE)
 ```
+
+The local default is CPU:
+
+```dotenv
+YOLO_DEVICE=cpu
+WHISPER_DEVICE=cpu
+WHISPER_COMPUTE_TYPE=int8
+```
+
+`yolov11x.pt` is heavy for CPU inference. If real-time performance is not acceptable on the target machine, use a smaller compatible model through `YOLO_MODEL_PATH`.
 
 For every detection box `[x1, y1, x2, y2]`, the daemon uses the bottom-center point:
 
@@ -445,7 +507,7 @@ Point((x1 + x2) / 2.0, y2)
 
 This point is checked against all configured ROI polygons. A `hand` class inside `cash_drawer_zone` becomes `hand_to_drawer`; an item in `bag_zone`, `bagging_zone`, or `packing_zone` becomes `item_in_bag`. Detections that do not map to the backend event contract are ignored.
 
-Every 10 seconds by default, the YOLO worker logs average inference time and CUDA memory usage when PyTorch exposes it.
+Every 10 seconds by default, the YOLO worker logs average inference time. CUDA memory usage is logged only when `YOLO_DEVICE` starts with `cuda`.
 
 ## Clip Export
 
@@ -482,7 +544,7 @@ VAD defaults:
 Whisper defaults:
 
 ```python
-WhisperModel("small", device="cuda", compute_type="float16")
+WhisperModel("small", device="cpu", compute_type="int8")
 ```
 
 Transcription language is fixed to Russian: `language="ru"`.

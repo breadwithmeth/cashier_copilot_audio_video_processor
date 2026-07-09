@@ -32,8 +32,8 @@ class AudioSTTWorker(multiprocessing.Process):
         max_segment_ms: int = 30000,
         vad_aggressiveness: int = 3,
         whisper_model_name: str = "small",
-        whisper_device: str = "cuda",
-        whisper_compute_type: str = "float16",
+        whisper_device: str = "cpu",
+        whisper_compute_type: str = "int8",
     ) -> None:
         super().__init__(name=f"AudioSttProcess-{camera_id}")
         self.camera_id = camera_id
