@@ -1,11 +1,12 @@
 import time
 
-from ultralytics import YOLO
+from ultralytics import YOLOWorld
 
 from config import (
     SCAN_MODEL_PATH,
     SCAN_CONFIDENCE,
     SCAN_IMAGE_SIZE,
+    SCAN_WORLD_PROMPTS,
 )
 
 from models.detection import Detection, ScanResult
@@ -15,7 +16,8 @@ from vision.roi import crop_roi, offset_bbox
 class ScanDetector:
     def __init__(self, roi):
         self.roi = roi
-        self.model = YOLO(str(SCAN_MODEL_PATH))
+        self.model = YOLOWorld(str(SCAN_MODEL_PATH))
+        self.model.set_classes(SCAN_WORLD_PROMPTS)
 
     def detect(self, frame) -> ScanResult:
         roi_frame, clipped_roi = crop_roi(frame, self.roi)
@@ -27,10 +29,12 @@ class ScanDetector:
 
         start = time.time()
 
-        results = self.model.predict(
+        results = self.model.track(
             source=roi_frame,
             conf=SCAN_CONFIDENCE,
             imgsz=SCAN_IMAGE_SIZE,
+            persist=True,
+            tracker="trackers/bytetrack_retail.yaml",
             verbose=False,
         )
 
@@ -45,6 +49,11 @@ class ScanDetector:
             for box in result.boxes:
                 cls = int(box.cls.item())
                 conf = float(box.conf.item())
+                track_id = (
+                    int(box.id.item())
+                    if box.id is not None
+                    else None
+                )
 
                 bx1, by1, bx2, by2 = box.xyxy[0].tolist()
 
@@ -61,14 +70,13 @@ class ScanDetector:
                     y1,
                 )
 
-                class_name = self.model.names[cls]
-
                 objects.append(
                     Detection(
-                        class_name=class_name,
+                        class_name="object",
                         confidence=conf,
                         bbox=full_bbox,
                         roi_name="scan_zone",
+                        track_id=track_id,
                     )
                 )
 

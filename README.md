@@ -1,595 +1,402 @@
 # Cashier Copilot Audio/Video Processor
 
-Multiprocess daemon for RTSP video analytics, violation clip export, and Russian speech-to-text processing.
+Локальное приложение для аналитики кассовой зоны по RTSP. Система обнаруживает и отслеживает объекты, определяет клиента и кассира, оценивает положение рук, распознаёт речь, показывает субтитры и собирает изображения для последующей разметки Florence-2.
 
-## Status
+## Возможности
 
-This repository contains the audio/video processor service only. It expects PostgreSQL, camera records, RTSP access, FFmpeg, OpenCV, YOLO weights, and Faster-Whisper runtime dependencies to be available in the target environment.
+- RTSP-видео с автоматическим переподключением;
+- отдельный RTSP-поток микрофона;
+- поиск объектов через YOLO-World;
+- единый внешний класс `object` без продуктовой классификации;
+- трекинг ByteTrack и устойчивый подсчёт;
+- отдельные окна с crop найденных объектов;
+- YOLO Pose для клиента, кассира и положения рук;
+- состояния кассы и контроль отсутствия кассира;
+- русская речь через GigaAM-v3;
+- субтитры с историей за последние 10 секунд;
+- WAV и JSON-транскрипт каждого визита;
+- сбор лучшего crop каждого трека;
+- отдельная пакетная разметка Florence-2.
 
-Database credentials are stored in local `.env`. That file is intentionally ignored by git and must not be copied into documentation, commits, logs, or tickets. Use `.env.example` as the public template.
-
-## Architecture
-
-The daemon starts four isolated Python processes through `multiprocessing`:
-
-1. `VideoGrabberProcess`
-   Captures RTSP video, stores a configurable RAM ring buffer, JPEG-compresses every frame, and sends every fifth frame to the inference queue.
-
-2. `YoloInferenceProcess`
-   Reads frames from `inference_queue`, runs YOLO on the configured device, loads ROI polygons from PostgreSQL, checks object locations with Shapely, and inserts rows into `cv_events`.
-
-3. `ClipExporterProcess`
-   Polls `tasks` for pending `video_export` jobs, requests the relevant buffered frames from the video process through IPC queues, and writes MP4 files.
-
-4. `AudioSttProcess`
-   Captures audio with FFmpeg, applies WebRTC VAD, sends speech segments to Faster-Whisper, and inserts rows into `speech_transcripts`.
-
-The clip worker cannot directly read the `deque` owned by the video process because process memory is isolated. Clip extraction is implemented with `ClipRequest` and `ClipResponse` messages over `multiprocessing.Queue`.
-
-## Process Map
+## Архитектура
 
 ```text
 RTSP video
-  -> VideoGrabberProcess
-      -> RAM deque[(timestamp_ms, jpeg_bytes)]
-      -> inference_queue every 5th frame
-      -> clip request/response queues
+  -> RTSPReader
+  -> YOLO-World -> ByteTrack -> counter / object windows / pending dataset
+  -> YOLO Pose  -> customer/cashier / hand position
+  -> OpenCV overlay
 
-inference_queue
-  -> YoloInferenceProcess
-      -> YOLOv11 CPU/GPU
-      -> Shapely ROI checks
-      -> PostgreSQL cv_events
+RTSP microphone
+  -> FFmpeg PCM 16 kHz mono
+  -> visit audio buffer
+  -> GigaAM-v3 -> subtitles / WAV / JSON
 
-PostgreSQL tasks
-  -> ClipExporterProcess
-      -> ClipRequest to VideoGrabberProcess
-      -> MP4 in CLIP_OUTPUT_DIR
-      -> tasks.result_path
-
-RTSP audio or local microphone
-  -> AudioSttProcess
-      -> FFmpeg PCM 16 kHz mono
-      -> webrtcvad
-      -> Faster-Whisper
-      -> PostgreSQL speech_transcripts
+dataset_output/pending
+  -> separate Florence-2 script
+  -> dataset_output/images/<class>
+  -> dataset_output/metadata.jsonl
 ```
 
-## Files
+## Требования и установка
 
-```text
-cashier_av_processor/
-  audio_stt.py       FFmpeg capture, VAD, Faster-Whisper worker
-  clip_exporter.py   video_export polling and MP4 export
-  config.py          environment and .env loading
-  daemon.py          process orchestration and shutdown
-  db.py              SQL, connection pool, durable spool
-  detector.py        YOLO and Shapely ROI analysis
-  messages.py        IPC dataclasses
-  video.py           RTSP capture and JPEG ring buffer
-```
-
-## Requirements
-
-Python:
-
-- Python 3.10+
-- `opencv-python`
-- `numpy`
-- `psycopg2-binary`
-- `ultralytics`
-- `shapely`
-- `faster-whisper`
-- `webrtcvad`
-
-System:
-
-- FFmpeg available in `PATH`
-- CPU runtime by default, or NVIDIA GPU/CUDA if `YOLO_DEVICE=cuda` and `WHISPER_DEVICE=cuda`
-- Network access to PostgreSQL and camera RTSP endpoints
-- Write access to `CLIP_OUTPUT_DIR` and `SPOOL_DIR`
-
-Install:
+- Python 3.10 или 3.11;
+- FFmpeg в `PATH`;
+- доступ к RTSP-потокам;
+- GUI-сессия для `cv2.imshow`;
+- macOS Apple Silicon для MLX/MPS-конфигурации по умолчанию.
 
 ```bash
+brew install ffmpeg
+python3.11 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 
-## Configuration
-
-The service reads environment variables and also auto-loads a local `.env` file from the current working directory.
-
-Use `.env.example` as a template:
+Проверка:
 
 ```bash
-cp .env.example .env
+ffmpeg -version
 ```
 
-Required values:
+## Модели
 
-```dotenv
-DB_HOST=<postgres-host>
-DB_PORT=5432
-DB_SSLMODE=disable
-DB_NAME=<database-name>
-DB_USER=<database-user>
-DB_PASSWORD=<database-password>
-
-CAMERA_ID=<camera-id>
-RTSP_URL=rtsp://<user>:<password>@<host>:<port>/<path>
-POS_ID=<pos-id>
-```
-
-Optional values:
-
-```dotenv
-YOLO_MODEL_PATH=weights/best.pt
-YOLO_DEVICE=cpu
-CLIP_OUTPUT_DIR=clips
-SPOOL_DIR=spool
-VIDEO_FPS=25
-INFERENCE_STRIDE=25
-BUFFER_SECONDS=120
-JPEG_QUALITY=85
-INFERENCE_QUEUE_SIZE=64
-TASK_POLL_INTERVAL_S=1.0
-CLIP_RESPONSE_TIMEOUT_S=15.0
-YOLO_PROFILE_INTERVAL_S=10.0
-WHISPER_MODEL_NAME=small
-WHISPER_DEVICE=cpu
-WHISPER_COMPUTE_TYPE=int8
-ANALYTICS_API_BASE_URL=http://127.0.0.1:8085
-ANALYTICS_API_KEY=<analytics-api-key>
-ANALYTICS_STREAM_BASE_URL=http://127.0.0.1:8888
-ANALYTICS_STREAM_URL=
-ANALYTICS_STREAM_TYPE=hls
-ANALYTICS_REGISTER_TIMEOUT_S=5
-```
-
-`DB_DSN` is also supported instead of separate `DB_HOST`, `DB_PORT`, `DB_SSLMODE`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`.
-
-If `ANALYTICS_STREAM_URL` is empty, it is derived from `ANALYTICS_STREAM_BASE_URL` and `CAMERA_ID`:
+Локальные веса:
 
 ```text
-<ANALYTICS_STREAM_BASE_URL>/<CAMERA_ID>/index.m3u8
+weights/yolov8s-worldv2.pt
+yolo11n-pose.pt
 ```
 
-Audio source:
+Речь по умолчанию:
 
-- Empty `AUDIO_SOURCE` means the worker uses `RTSP_URL`.
-- `AUDIO_SOURCE=rtsp://...` uses a separate RTSP audio stream.
-- `AUDIO_SOURCE=mic::0` uses macOS AVFoundation device `:0`.
-- `AUDIO_SOURCE=mic:default` uses Linux PulseAudio default input.
+```text
+GigaAM-v3 e2e RNN-T
+```
 
-## Run
+Разметка датасета:
+
+```text
+microsoft/Florence-2-base-ft
+```
+
+Загрузить Florence заранее:
 
 ```bash
-python -m cashier_av_processor
+.venv/bin/hf download microsoft/Florence-2-base-ft
 ```
 
-or:
+## Конфигурация камеры
 
-```bash
-cashier-av-daemon
-```
+Камеры задаются в `STREAMS` файла `config.py`:
 
-Stop with `Ctrl+C` or `SIGTERM`. The parent process sets a shared stop event, waits for workers, and terminates workers that do not exit in time.
-
-## Backend Stream Registration
-
-The daemon can notify the Go backend where the analytics overlay stream is available. On startup it sends `online`; during normal shutdown it sends `offline`.
-
-Endpoint:
-
-```text
-POST /api/v1/analytics/cameras/<camera_id>/stream
-```
-
-Headers:
-
-```text
-X-API-Key: <analytics-api-key>
-Content-Type: application/json
-```
-
-Payload:
-
-```json
-{
-  "analytics_stream_url": "http://127.0.0.1:8888/<camera_id>/index.m3u8",
-  "analytics_stream_type": "hls",
-  "analytics_stream_status": "online"
+```python
+STREAMS = {
+    "cam10": {
+        "url": "rtsp://user:password@host/video",
+        "audio_url": "rtsp://host:8554/microphone",
+        "scan_roi": (1100, 100, 1750, 1100),
+        "customer_roi": (1800, 0, 3200, 900),
+        "cashier_roi": (0, 0, 1200, 1300),
+    },
 }
 ```
 
-Manual check:
+- `url` — видео;
+- `audio_url` — отдельный микрофон; если отсутствует, используется `url`;
+- `scan_roi` — область объектов;
+- `customer_roi` — зона клиента;
+- `cashier_roi` — зона кассира.
 
-```bash
-STREAM_URL="${ANALYTICS_STREAM_URL:-$ANALYTICS_STREAM_BASE_URL/$CAMERA_ID/index.m3u8}"
-curl -X POST "$ANALYTICS_API_BASE_URL/api/v1/analytics/cameras/$CAMERA_ID/stream" \
-  -H "X-API-Key: $ANALYTICS_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{\"analytics_stream_url\":\"$STREAM_URL\",\"analytics_stream_type\":\"$ANALYTICS_STREAM_TYPE\",\"analytics_stream_status\":\"online\"}"
-```
+ROI: `(x1, y1, x2, y2)` в координатах исходного кадра.
 
-The stream registration request is best-effort: failure to reach the backend is logged but does not stop video capture or analytics workers.
-
-## Database Schema
-
-The current database contains these public tables:
-
-- `cameras`
-- `cv_events`
-- `pos_events`
-- `speech_transcripts`
-- `tasks`
-- `upsell_rules`
-- `violations`
-
-No custom enum types or views were present when the schema was inspected.
-
-## Backend Event Contract
-
-The Go Rule Engine currently expects only these `cv_events.event_type` values:
-
-| Event Type | Meaning |
-| --- | --- |
-| `item_in_bag` | Item moved into bagging or packing zone. |
-| `hand_to_drawer` | Cashier hand near cash drawer. |
-| `phone_scanned_by_cashier` | Cashier scans their own phone or QR. |
-| `document_presented` | Customer document or passport visible. |
-| `item_return` | Item moved back toward cashier/scanner area. |
-| `hand_to_scanner` | Hand returned toward scanner/cashier area. |
-| `customer_present` | Customer detected in service zone. |
-| `customer_left` | Customer leaves service zone. |
-| `no_cashier` | Cashier absent from workplace. |
-| `cashier_present` | Cashier present at workplace. |
-
-The detector must not insert arbitrary event names such as `<class>_in_<zone>` unless the backend contract is changed.
-
-Recommended `bbox_jsonb` shape:
-
-```json
-{
-  "bbox": [120, 80, 260, 220],
-  "class_name": "item",
-  "track_id": "track-123",
-  "roi": "bag_zone",
-  "frame_id": 45678,
-  "extra": {
-    "direction": "scanner_to_bag"
-  }
-}
-```
-
-Presence events such as `customer_present`, `customer_left`, `cashier_present`, and `no_cashier` are emitted on state changes. `cashier_present` and `no_cashier` may also be emitted as low-rate heartbeat events.
-
-### cameras
-
-| Column | Type | Null | Default |
-| --- | --- | --- | --- |
-| `id` | `varchar` | no | |
-| `ip_address` | `varchar` | no | |
-| `username` | `varchar` | no | |
-| `password` | `varchar` | no | |
-| `pos_id` | `varchar` | no | |
-| `status` | `varchar` | no | `'inactive'` |
-| `roi_config` | `jsonb` | no | `{}` |
-| `created_at` | `timestamptz` | yes | `CURRENT_TIMESTAMP` |
-
-The daemon loads active cameras with:
-
-```sql
-SELECT id, roi_config, pos_id FROM cameras WHERE status = 'active';
-```
-
-Expected `roi_config` shape:
-
-```json
-{
-  "scanner_zone": [[0, 0], [100, 0], [100, 100], [0, 100]],
-  "cash_drawer_zone": [[120, 0], [220, 0], [220, 100], [120, 100]],
-  "packing_zone": [[0, 120], [100, 120], [100, 220], [0, 220]],
-  "customer_zone": [[120, 120], [220, 120], [220, 220], [120, 220]]
-}
-```
-
-### cv_events
-
-| Column | Type | Null |
-| --- | --- | --- |
-| `id` | `bigint` | no |
-| `camera_id` | `varchar` | no |
-| `event_type` | `varchar` | no |
-| `timestamp_ms` | `bigint` | no |
-| `confidence` | `double precision` | no |
-| `model_name` | `varchar` | no |
-| `weights_version` | `varchar` | no |
-| `inference_time_ms` | `integer` | no |
-| `bbox_jsonb` | `jsonb` | no |
-| `snapshot_path` | `varchar` | no |
-
-Insert used by the daemon:
-
-```sql
-INSERT INTO cv_events (
-    camera_id,
-    event_type,
-    timestamp_ms,
-    confidence,
-    model_name,
-    weights_version,
-    inference_time_ms,
-    bbox_jsonb,
-    snapshot_path
-)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
-```
-
-`snapshot_path` is `NOT NULL` in the database, so the daemon writes an empty string when no snapshot file is available.
-
-### speech_transcripts
-
-| Column | Type | Null |
-| --- | --- | --- |
-| `id` | `bigint` | no |
-| `pos_id` | `varchar` | no |
-| `transcript` | `text` | no |
-| `timestamp_ms` | `bigint` | no |
-| `duration_ms` | `integer` | no |
-| `confidence` | `double precision` | no |
-| `model_name` | `varchar` | no |
-| `weights_version` | `varchar` | no |
-
-Insert used by the daemon:
-
-```sql
-INSERT INTO speech_transcripts (
-    pos_id,
-    transcript,
-    timestamp_ms,
-    duration_ms,
-    confidence,
-    model_name,
-    weights_version
-)
-VALUES (%s, %s, %s, %s, %s, %s, %s);
-```
-
-`confidence` is `NOT NULL`, so missing model confidence is stored as `0.0`.
-
-### tasks
-
-| Column | Type | Null | Default |
-| --- | --- | --- | --- |
-| `id` | `bigint` | no | |
-| `task_type` | `varchar` | no | |
-| `camera_id` | `varchar` | no | |
-| `violation_id` | `bigint` | yes | |
-| `payload` | `jsonb` | no | `{}` |
-| `status` | `varchar` | no | `'pending'` |
-| `result_path` | `varchar` | yes | |
-| `error_message` | `text` | yes | |
-| `created_at` | `timestamptz` | yes | `CURRENT_TIMESTAMP` |
-| `updated_at` | `timestamptz` | yes | `CURRENT_TIMESTAMP` |
-| `processed_at` | `timestamptz` | yes | |
-
-Task polling and claiming:
-
-```sql
-WITH next_task AS (
-    SELECT id
-    FROM tasks
-    WHERE status = 'pending' AND task_type = 'video_export'
-    ORDER BY created_at ASC
-    FOR UPDATE SKIP LOCKED
-    LIMIT 1
-)
-UPDATE tasks
-SET status = 'processing',
-    updated_at = CURRENT_TIMESTAMP
-WHERE id IN (SELECT id FROM next_task)
-RETURNING id, task_type, camera_id, violation_id, payload;
-```
-
-Expected `video_export` payload:
-
-```json
-{
-  "start_timestamp_ms": 1780000000000,
-  "end_timestamp_ms": 1780000005000
-}
-```
-
-Supported aliases are also accepted:
-
-- start: `start_timestamp_ms`, `start_ts`, `start_ms`, `from_timestamp_ms`, `from_ms`
-- end: `end_timestamp_ms`, `end_ts`, `end_ms`, `to_timestamp_ms`, `to_ms`
-
-Completion:
-
-```sql
-UPDATE tasks
-SET status = 'completed',
-    result_path = %s,
-    error_message = NULL,
-    updated_at = CURRENT_TIMESTAMP
-WHERE id = %s;
-```
-
-Failure:
-
-```sql
-UPDATE tasks
-SET status = 'failed',
-    error_message = %s,
-    updated_at = CURRENT_TIMESTAMP
-WHERE id = %s;
-```
-
-The video server must not update `processed_at`; that field is reserved for Go backend acknowledgement.
-
-### Other Tables
-
-`pos_events` stores POS timeline events and has an index on `(timestamp_ms, pos_id)`.
-
-`violations` links generated violations to optional `cv_events`, `pos_events`, and `speech_transcripts` rows.
-
-`upsell_rules` stores keyword-based upsell suggestions.
-
-## Indexes and Constraints
-
-Primary keys:
-
-- `cameras_pkey`
-- `cv_events_pkey`
-- `pos_events_pkey`
-- `speech_transcripts_pkey`
-- `tasks_pkey`
-- `upsell_rules_pkey`
-- `violations_pkey`
-
-Operational indexes:
-
-- `idx_cv_events_time_cam` on `cv_events(timestamp_ms, camera_id)`
-- `idx_pos_events_time_pos` on `pos_events(timestamp_ms, pos_id)`
-- `idx_speech_time_pos` on `speech_transcripts(timestamp_ms, pos_id)`
-- `idx_tasks_status` on `tasks(status)`
-- `idx_violations_time` on `violations(timestamp_ms)`
-
-Foreign keys:
-
-- `tasks.violation_id -> violations.id`
-- `violations.cv_event_id -> cv_events.id`
-- `violations.pos_event_id -> pos_events.id`
-- `violations.speech_transcript_id -> speech_transcripts.id`
-
-## Video Buffer
-
-The video process keeps frames as JPEG bytes instead of raw NumPy arrays:
+## Детекция
 
 ```python
-cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+TARGET_FPS = 15
+SCAN_CONFIDENCE = 0.2
+PERSON_CONFIDENCE = 0.4
+POSE_KEYPOINT_CONFIDENCE = 0.3
+SCAN_IMAGE_SIZE = (1088, 1920)
+POSE_IMAGE_SIZE = (1088, 1920)
 ```
 
-Default sizing:
-
-- `VIDEO_FPS=25`
-- `BUFFER_SECONDS=120`
-- `deque(maxlen=3000)`
-- `INFERENCE_STRIDE=5`, so YOLO receives about 5 FPS
-
-If frame spacing exceeds the target interval, the process logs a capture lag warning and continues.
-
-## YOLO and ROI Logic
-
-The detector loads:
+YOLO-World требует prompts даже без продуктовой классификации:
 
 ```python
-YOLO(YOLO_MODEL_PATH).to(YOLO_DEVICE)
+SCAN_WORLD_PROMPTS = [
+    "retail product", "product package", "bottle", "can",
+    "box", "bag", "fruit", "vegetable",
+]
 ```
 
-The local default is CPU:
+Prompts применяются внутри модели. Все результаты наружу выходят как `object`.
 
-```dotenv
-YOLO_DEVICE=cpu
-WHISPER_DEVICE=cpu
-WHISPER_COMPUTE_TYPE=int8
+## ByteTrack и счётчик
+
+Конфигурация: `trackers/bytetrack_retail.yaml`.
+
+```yaml
+tracker_type: bytetrack
+track_high_thresh: 0.20
+track_low_thresh: 0.05
+new_track_thresh: 0.25
+track_buffer: 90
+match_thresh: 0.90
+fuse_score: true
 ```
 
-`yolov11x.pt` is heavy for CPU inference. If real-time performance is not acceptable on the target machine, use a smaller compatible model through `YOLO_MODEL_PATH`.
+Объект получает ID, например `ID 7 object 0.82`. Счётчик сначала сопоставляет по ID. После пропуска и смены ByteTrack ID выполняется повторное связывание по IoU и расстоянию. Внутренние треки хранятся до 45 обработанных кадров.
 
-For every detection box `[x1, y1, x2, y2]`, the daemon uses the bottom-center point:
+Для каждого объекта открывается окно с увеличенным crop. Оно остаётся две секунды после потери трека, чтобы не мерцать.
+
+## YOLO Pose и руки
+
+Роль человека определяется по нижней центральной точке bounding box относительно ROI. Используются COCO keypoints:
+
+- `5/6` — плечи;
+- `7/8` — локти;
+- `9/10` — запястья.
+
+Состояния:
+
+- `raised` — запястье выше плеча;
+- `extended` — рука вытянута в сторону;
+- `bent` — рука согнута;
+- `down` — рука опущена;
+- `unknown` — keypoints недостаточно уверенные.
+
+На кадре рисуются суставы, линии и подписи.
+
+## Состояние кассы
 
 ```python
-Point((x1 + x2) / 2.0, y2)
+CUSTOMER_TIMEOUT = 3.0
+CASHIER_TIMEOUT = 2.0
 ```
 
-This point is checked against all configured ROI polygons. A `hand` class inside `cash_drawer_zone` becomes `hand_to_drawer`; an item in `bag_zone`, `bagging_zone`, or `packing_zone` becomes `item_in_bag`. Detections that do not map to the backend event contract are ignored.
+Статусы:
 
-Every 10 seconds by default, the YOLO worker logs average inference time. CUDA memory usage is logged only when `YOLO_DEVICE` starts with `cuda`.
+- `IDLE`;
+- `CUSTOMER_WAITING`;
+- `SERVICE_STARTED`;
+- `NO_CASHIER`.
 
-## Clip Export
-
-`ClipExporterProcess` writes files to `CLIP_OUTPUT_DIR` with this format:
+События:
 
 ```text
-violation_<violation_id>_task_<task_id>_<camera_id>_<start_timestamp_ms>_<end_timestamp_ms>.mp4
+CUSTOMER_PRESENT
+CUSTOMER_LEFT
+CASHIER_PRESENT
+CASHIER_LEFT
+PRODUCT_COUNTED:4
 ```
 
-Frames are decoded from JPEG bytes with OpenCV and written using:
+## Распознавание речи
 
-```python
-cv2.VideoWriter_fourcc(*"mp4v")
-```
+FFmpeg преобразует RTSP-аудио в PCM signed 16-bit mono 16 kHz. Фильтры `aresample` и `asetpts` нормализуют нестабильные RTSP timestamps.
 
-If requested frames are no longer in the ring buffer, the task is marked `failed`.
-
-## Speech Processing
-
-FFmpeg command shape:
+STT привязан к визиту клиента. Prebuffer сохраняет звук с первого появления, включая период подтверждения клиента.
 
 ```bash
-ffmpeg -rtsp_transport tcp -i <source> -vn -acodec pcm_s16le -ar 16000 -ac 1 -f wav pipe:1
+export SPEECH_RECOGNITION_ENABLED=1
+export WHISPER_BACKEND=gigaam
+export GIGAAM_MODEL=v3_e2e_rnnt
+export GIGAAM_DEVICE=auto
+export WHISPER_LANGUAGE=ru
+export TRANSCRIPTS_DIR=transcripts
 ```
 
-VAD defaults:
+Backend:
 
-- `webrtcvad.Vad(3)`
-- 30 ms frames
-- speech starts when 90% of the last 300 ms are voiced
-- segment closes after 1.5 seconds of silence
-- max segment length is 30 seconds
+- `gigaam` — специализированная русская модель по умолчанию;
+- `mlx` — Apple Silicon;
+- `faster-whisper` — CPU/CUDA;
+- `sensevoice` — экспериментальный.
 
-Whisper defaults:
+Для Faster Whisper:
 
-```python
-WhisperModel("small", device="cpu", compute_type="int8")
+```bash
+export WHISPER_COMPUTE_TYPE=int8
 ```
 
-Transcription language is fixed to Russian: `language="ru"`.
+### Субтитры
 
-## Failure Handling
+Речь распознаётся перекрывающимися окнами. Справа показываются фразы за последние 10 секунд. Тихие фрагменты отбрасываются по RMS. Для GigaAM записи длиннее 25 секунд автоматически режутся на 24-секундные части, а word-level timestamps объединяются в общую шкалу визита.
 
-PostgreSQL insert failures do not crash workers. Failed `cv_events` and `speech_transcripts` inserts are appended to JSONL files under `SPOOL_DIR`.
-
-The spool file name includes the worker PID:
+### Файлы визита
 
 ```text
-pending_events_<pid>.jsonl
+transcripts/
+  cam10_20260712_120000_ab12cd34.wav
+  cam10_20260712_120000_ab12cd34.json
 ```
 
-Workers replay a limited number of spooled events after successful writes.
+```json
+{
+  "camera": "cam10",
+  "visit_id": "...",
+  "started_at": "2026-07-12T12:00:00+05:00",
+  "ended_at": "2026-07-12T12:01:15+05:00",
+  "duration": 75.0,
+  "timestamps_relative_to": "customer_arrived",
+  "segments": [
+    {"start": 3.24, "end": 5.81, "text": "Здравствуйте"}
+  ],
+  "audio_file": "cam10_20260712_120000_ab12cd34.wav"
+}
+```
 
-RTSP video read failures close the current OpenCV capture, sleep five seconds, and reconnect.
+Таймкоды считаются от начала визита.
 
-Audio capture failures terminate the FFmpeg subprocess, sleep five seconds, and reconnect.
+## Сбор датасета без Florence
 
-## Smoke Checks
-
-Syntax check:
+Основное приложение только сохраняет лучший crop трека. Florence в видеопроцессе не загружается.
 
 ```bash
-python3 -m py_compile cashier_av_processor/*.py
+export DATASET_COLLECTION_ENABLED=1
+export DATASET_DIR=dataset_output
+export DATASET_TRACK_TIMEOUT=2.0
 ```
 
-Configuration check:
+Crop выбирается по confidence, площади и резкости:
+
+```text
+dataset_output/pending/
+  cam10_track_7_20260712_120000_123456.jpg
+  cam10_track_7_20260712_120000_123456.json
+```
+
+Sidecar JSON содержит камеру, ID, confidence, время и статус `pending`.
+
+## Отдельная разметка Florence-2
 
 ```bash
-python -m cashier_av_processor
+.venv/bin/python -m dataset.label_with_florence
 ```
 
-Without `CAMERA_ID` and `RTSP_URL`, the service should stop with a configuration error. After camera configuration is filled, the daemon will start workers and attempt RTSP, PostgreSQL, CUDA, and FFmpeg runtime work.
-
-Database connectivity check with `psql`:
+С параметрами:
 
 ```bash
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "select current_database(), current_user, current_schema();"
+.venv/bin/python -m dataset.label_with_florence \
+  --dataset-dir dataset_output \
+  --model microsoft/Florence-2-base-ft
 ```
 
-## Security Notes
+Скрипт загружает Florence один раз, выполняет `<CAPTION>`, нормализует описание в имя класса, перемещает изображение и добавляет запись в `metadata.jsonl`.
 
-- Keep `.env` local and ignored by git.
-- Do not put real database passwords or RTSP passwords in Markdown files.
-- Avoid printing `DB_DSN`, `.env`, camera passwords, or RTSP URLs in logs.
-- Rotate credentials if they were copied into chat, tickets, screenshots, commits, or logs.
+```text
+dataset_output/
+  pending/
+  images/
+    bottle_of_cola/
+    banana/
+  metadata.jsonl
+```
+
+Это псевдоразметка. Перед обучением нужно вручную объединить синонимы, проверить классы и удалить ошибки.
+
+## Запуск
+
+```bash
+source .venv/bin/activate
+python main.py
+```
+
+Клавиши:
+
+- `q` или `Esc` — выход;
+- `r` — сброс счётчика.
+
+## Audio test
+
+По умолчанию распознаёт фрагменты по 60 секунд:
+
+```bash
+.venv/bin/python audio_test/main.py
+CHUNK_SECONDS=30 .venv/bin/python audio_test/main.py
+```
+
+## Тесты
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m compileall -q .
+```
+
+## Структура
+
+```text
+audio/rtsp_transcriber.py        RTSP audio, STT, субтитры
+audio_test/main.py               тест аудио
+camera/rtsp_reader.py            RTSP video reader
+dataset/object_collector.py      pending crops
+dataset/label_with_florence.py   отдельная разметка
+dataset/phi4_collector.py        Florence runtime (legacy filename)
+logic/checkout_state.py          состояние кассы
+logic/product_counter.py         подсчёт и re-association
+models/detection.py              объекты
+models/person.py                 люди и руки
+trackers/bytetrack_retail.yaml   ByteTrack
+ui/overlay.py                    оверлей
+vision/person_detector.py        YOLO Pose
+vision/scan_detector.py          YOLO-World + tracking
+config.py                        настройки
+main.py                          основной цикл
+```
+
+## Диагностика
+
+### Детекция мигает
+
+- уменьшайте `SCAN_CONFIDENCE` небольшими шагами;
+- проверьте prompts и `scan_roi`;
+- улучшите освещение;
+- увеличьте `track_buffer`.
+
+Слишком низкий confidence создаёт ложные объекты.
+
+### Объект считается повторно
+
+Проверьте `trackers/bytetrack_retail.yaml`. После очень долгого исчезновения объект намеренно считается новым.
+
+### Нет аудио
+
+```bash
+ffprobe rtsp://host:8554/microphone
+ffmpeg -rtsp_transport tcp -i rtsp://host:8554/microphone -t 10 test.wav
+```
+
+### `non monotonically increasing dts`
+
+Не удаляйте фильтры `aresample=async=1:first_pts=0` и `asetpts=N/SR/TB`.
+
+### `load_npz` в MLX Whisper
+
+Используйте `mlx-community/whisper-large-v3-turbo-q4`. Несовместимое имя `...-8bit` автоматически заменяется на `q4`.
+
+### Конфликт `libavdevice` на macOS
+
+PyAV и OpenCV могут загрузить разные FFmpeg dylib. Используйте `WHISPER_BACKEND=mlx`.
+
+### Florence не запускается
+
+```bash
+pip install -e .
+.venv/bin/hf download microsoft/Florence-2-base-ft
+```
+
+Florence запускается только отдельным скриптом и не влияет на FPS основного приложения.
+
+## Ограничения
+
+- YOLO-World зависит от prompts и не является полностью class-agnostic detector;
+- Florence создаёт описание, но не гарантирует точный SKU;
+- для точного SKU нужен каталог, OCR/штрихкод или дообученная модель;
+- роль человека определяется геометрически по ROI;
+- 2D pose ошибается при перекрытиях;
+- `cv2.imshow` не работает на headless-сервере без дисплея.
+
+## Безопасность
+
+Не публикуйте RTSP URL с логинами и паролями. Для production вынесите адреса камер из `config.py` в переменные окружения или секрет-хранилище.

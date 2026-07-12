@@ -6,10 +6,21 @@ BBox = Tuple[int, int, int, int]
 
 
 @dataclass
+class HandPose:
+    side: str
+    position: str
+    shoulder: tuple[int, int] | None = None
+    elbow: tuple[int, int] | None = None
+    wrist: tuple[int, int] | None = None
+    confidence: float = 0.0
+
+
+@dataclass
 class PersonDetection:
     role: str
     confidence: float
     bbox: BBox
+    hands: list[HandPose] | None = None
 
     @property
     def x1(self) -> int:
@@ -40,5 +51,6 @@ class PersonResult:
     customer_detected: bool
     cashier_detected: bool
     persons: list[PersonDetection]
+    process_ms: int = 0
     customer_ms: int = 0
     cashier_ms: int = 0

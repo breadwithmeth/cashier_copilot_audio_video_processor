@@ -1,8 +1,73 @@
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# Virtual environments and local package metadata
 .venv/
+venv/
+env/
+*.egg-info/
+
+# Local secrets and machine-specific files
 .env
+.env.*
+!.env.example
+.DS_Store
+
+# Application output
 clips/
 spool/
 hls/
+transcripts/
+transcript.txt
+dataset_output/
+
+# Training runs and generated datasets
+runs/
+wandb/
+d2s_fast-2/
+no_classification_object_detection/
+tolstogo_ch4_50/
+tolstogo_ch4_640-2/
+
+# Model weights and exported inference engines
+weights/
+weights_old/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+*.safetensors
+*.npz
+*.tflite
+*.mlmodel
+*.torchscript
+
+# Recorded media and temporary audio chunks
+*.wav
+*.flac
+*.mp3
+*.aac
+*.m4a
+*.pcm
+*.s16le
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+
+# Generated logs and temporary files
+*.log
+*.tmp
+*.temp
+*.part
+*.incomplete
+
+# Library caches
 .matplotlib_cache/
+.cache/

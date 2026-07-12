@@ -11,6 +11,7 @@ class Detection:
     confidence: float
     bbox: BBox
     roi_name: str = "scan_zone"
+    track_id: int | None = None
 
     @property
     def x1(self) -> int:

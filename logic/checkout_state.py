@@ -2,6 +2,7 @@ import time
 from enum import Enum
 
 from config import CUSTOMER_TIMEOUT, CASHIER_TIMEOUT
+from logic.product_counter import ProductCounter
 
 
 class CheckoutStatus(str, Enum):
@@ -20,6 +21,7 @@ class CheckoutState:
 
         self.customer_present_since = None
         self.cashier_present_since = None
+        self.cashier_absent_since = None
 
         self.customer_is_present = False
         self.cashier_is_present = False
@@ -27,9 +29,14 @@ class CheckoutState:
         self.no_cashier_alarm = False
 
         self.scan_objects = []
+        self.product_counter = ProductCounter(ignored_classes={"barcode_scanner"})
+        self.new_products = 0
 
         self.last_event = None
         self.last_event_time = None
+        self.customer_arrived = False
+        self.customer_left = False
+        self.visit_started_at = None
 
     def update(
         self,
@@ -38,10 +45,16 @@ class CheckoutState:
         scan_objects: list,
     ):
         now = time.time()
+        self.customer_arrived = False
+        self.customer_left = False
 
         self.customer_detected = customer_detected
         self.cashier_detected = cashier_detected
         self.scan_objects = scan_objects
+        self.new_products = self.product_counter.update(scan_objects)
+
+        if self.new_products:
+            self._set_event(f"PRODUCT_COUNTED:{self.product_counter.total}")
 
         self._update_customer_state(now)
         self._update_cashier_state(now)
@@ -55,6 +68,8 @@ class CheckoutState:
             if now - self.customer_present_since >= CUSTOMER_TIMEOUT:
                 if not self.customer_is_present:
                     self._set_event("CUSTOMER_PRESENT")
+                    self.customer_arrived = True
+                    self.visit_started_at = self.customer_present_since
 
                 self.customer_is_present = True
 
@@ -63,11 +78,14 @@ class CheckoutState:
 
             if self.customer_is_present:
                 self._set_event("CUSTOMER_LEFT")
+                self.customer_left = True
 
             self.customer_is_present = False
 
     def _update_cashier_state(self, now: float):
         if self.cashier_detected:
+            self.cashier_absent_since = None
+
             if self.cashier_present_since is None:
                 self.cashier_present_since = now
 
@@ -78,6 +96,9 @@ class CheckoutState:
                 self.cashier_is_present = True
 
         else:
+            if self.cashier_absent_since is None:
+                self.cashier_absent_since = now
+
             self.cashier_present_since = None
 
             if self.cashier_is_present:
@@ -124,7 +145,12 @@ class CheckoutState:
         return time.time() - self.customer_present_since
 
     def get_cashier_absent_seconds(self) -> float:
-        if self.cashier_detected:
+        if self.cashier_detected or self.cashier_absent_since is None:
             return 0.0
 
-        return time.time() - self.last_event_time if self.last_event_time else 0.0
+        return time.time() - self.cashier_absent_since
+
+    def reset_product_count(self):
+        self.product_counter.reset()
+        self.new_products = 0
+        self._set_event("PRODUCT_COUNT_RESET")

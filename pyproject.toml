@@ -9,8 +9,18 @@ description = "Multiprocess RTSP video analytics and STT daemon for cashier copi
 requires-python = ">=3.10"
 dependencies = [
   "faster-whisper>=1.0.0",
+  "gigaam[torch] @ git+https://github.com/salute-developers/GigaAM.git@85558932f047bf80d03f2b2e9dc2584c26e8bda6",
+  "funasr>=1.2.0",
+  "torchaudio>=2.0",
+  "mlx-whisper>=0.4.0; sys_platform == 'darwin'",
   "numpy>=1.24",
   "opencv-python>=4.9",
+  "Pillow>=10.0",
+  "accelerate>=1.4",
+  "torchvision>=0.21",
+  "transformers==4.48.2",
+  "timm>=1.0",
+  "einops>=0.8",
   "psycopg2-binary>=2.9",
   "shapely>=2.0",
   "ultralytics>=8.3",
@@ -20,7 +30,8 @@ dependencies = [
 [project.scripts]
 cashier-av-daemon = "cashier_av_processor.daemon:main"
 cashier-overlay-stream = "cashier_av_processor.overlay_stream:main"
+label-object-dataset = "dataset.label_with_florence:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cashier_av_processor*"]
+include = ["cashier_av_processor*", "dataset*"]
