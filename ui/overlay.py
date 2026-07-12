@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from logic.checkout_state import CheckoutStatus
+from vision.roi import is_rectangle_roi, roi_bounds
 
 
 class Overlay:
@@ -94,9 +95,13 @@ class Overlay:
         return cv2.cvtColor(np.asarray(canvas), cv2.COLOR_RGB2BGR)
 
     def _draw_roi(self, image, roi, label, color):
-        x1, y1, x2, y2 = roi
+        x1, y1, x2, y2 = roi_bounds(roi)
 
-        cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+        if is_rectangle_roi(roi):
+            cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+        else:
+            points = np.array(roi, dtype=np.int32)
+            cv2.polylines(image, [points], isClosed=True, color=color, thickness=2)
 
         cv2.putText(
             image,

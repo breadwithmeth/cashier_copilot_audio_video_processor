@@ -95,7 +95,12 @@ STREAMS = {
     "cam10": {
         "url": "rtsp://user:password@host/video",
         "audio_url": "rtsp://host:8554/microphone",
-        "scan_roi": (1100, 100, 1750, 1100),
+        "scan_roi": (
+            (1100, 100),
+            (1750, 100),
+            (1750, 1100),
+            (1100, 1100),
+        ),
         "customer_roi": (1800, 0, 3200, 900),
         "cashier_roi": (0, 0, 1200, 1300),
     },
@@ -108,7 +113,8 @@ STREAMS = {
 - `customer_roi` — зона клиента;
 - `cashier_roi` — зона кассира.
 
-ROI: `(x1, y1, x2, y2)` в координатах исходного кадра.
+ROI: прямоугольник `(x1, y1, x2, y2)` или полигон `((x1, y1), (x2, y2), ...)`
+в координатах исходного кадра. `scan_roi` поддерживает полигональную маску.
 
 ## Детекция
 
@@ -198,8 +204,21 @@ FFmpeg преобразует RTSP-аудио в PCM signed 16-bit mono 16 kHz. 
 
 STT привязан к визиту клиента. Prebuffer сохраняет звук с первого появления, включая период подтверждения клиента.
 
+Включение распознавания задаётся в `config.py`:
+
+```python
+SPEECH_RECOGNITION_ENABLED = True
+```
+
+Для запуска без аудио и STT:
+
+```python
+SPEECH_RECOGNITION_ENABLED = False
+```
+
+Параметры backend можно переопределять через окружение:
+
 ```bash
-export SPEECH_RECOGNITION_ENABLED=1
 export WHISPER_BACKEND=gigaam
 export GIGAAM_MODEL=v3_e2e_rnnt
 export GIGAAM_DEVICE=auto

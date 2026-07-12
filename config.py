@@ -46,7 +46,8 @@ CASHIER_TIMEOUT = 2.0
 # SPEECH RECOGNITION
 # ===========================
 
-SPEECH_RECOGNITION_ENABLED = os.getenv("SPEECH_RECOGNITION_ENABLED", "1") == "1"
+# Set to False to run video analytics without RTSP audio and STT.
+SPEECH_RECOGNITION_ENABLED = True
 WHISPER_MODEL = os.getenv(
     "WHISPER_MODEL",
     "mlx-community/whisper-large-v3-turbo-q4",
@@ -80,14 +81,14 @@ DATASET_TRACK_TIMEOUT = float(os.getenv("DATASET_TRACK_TIMEOUT", "2.0"))
 
 STREAMS = {
     "cam10": {
-        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=4&subtype=0",
+        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=10&subtype=0",
         "audio_url": "rtsp://100.96.0.32:8554/microphone",
 
         "scan_roi": (
-            1100,
-            100,
-            1750,
-            1100,
+            (1250, 100),
+            (1750, 100),
+            (1600, 1100),
+            (1100, 1100),
         ),
 
         "customer_roi": (

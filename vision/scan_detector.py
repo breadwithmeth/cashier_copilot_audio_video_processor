@@ -10,7 +10,7 @@ from config import (
 )
 
 from models.detection import Detection, ScanResult
-from vision.roi import crop_roi, offset_bbox
+from vision.roi import bbox_center_in_roi, crop_roi, offset_bbox
 
 
 class ScanDetector:
@@ -63,6 +63,9 @@ class ScanDetector:
                     int(bx2),
                     int(by2),
                 )
+
+                if not bbox_center_in_roi(local_bbox, self.roi, x1, y1):
+                    continue
 
                 full_bbox = offset_bbox(
                     local_bbox,
