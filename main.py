@@ -26,7 +26,8 @@ def show_object_windows(camera_name, frame, objects, open_windows):
 
     for index, obj in enumerate(objects):
         object_id = obj.track_id if obj.track_id is not None else f"temp_{index}"
-        window_name = f"{camera_name} | object {object_id}"
+        class_name = obj.class_name.replace("_", " ")
+        window_name = f"{camera_name} | {class_name} {object_id}"
         x1, y1, x2, y2 = obj.bbox
         x1, x2 = max(0, x1), min(frame_width, x2)
         y1, y2 = max(0, y1), min(frame_height, y2)
@@ -44,7 +45,7 @@ def show_object_windows(camera_name, frame, objects, open_windows):
                 interpolation=(cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA),
             )
 
-        label = f"ID {object_id} | conf {obj.confidence:.2f}"
+        label = f"{class_name} | ID {object_id} | conf {obj.confidence:.2f}"
         cv2.rectangle(crop, (0, 0), (crop.shape[1], 32), (0, 0, 0), -1)
         cv2.putText(crop, label, (8, 23), cv2.FONT_HERSHEY_SIMPLEX,
                     0.6, (0, 255, 0), 2)

@@ -3,6 +3,7 @@ from typing import Tuple
 
 
 BBox = Tuple[int, int, int, int]
+Polygon = list[tuple[int, int]]
 
 
 @dataclass
@@ -12,6 +13,7 @@ class Detection:
     bbox: BBox
     roi_name: str = "scan_zone"
     track_id: int | None = None
+    polygon: Polygon | None = None
 
     @property
     def x1(self) -> int:

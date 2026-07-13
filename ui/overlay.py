@@ -116,21 +116,33 @@ class Overlay:
     def _draw_scan_objects(self, image, objects):
         for obj in objects:
             x1, y1, x2, y2 = obj.bbox
+            class_name = obj.class_name.replace("_", " ")
+            polygon = getattr(obj, "polygon", None)
 
-            cv2.rectangle(
-                image,
-                (x1, y1),
-                (x2, y2),
-                (0, 255, 0),
-                2,
-            )
+            if polygon and len(polygon) >= 3:
+                points = np.array(polygon, dtype=np.int32)
+                cv2.polylines(
+                    image,
+                    [points],
+                    isClosed=True,
+                    color=(0, 255, 0),
+                    thickness=2,
+                )
+            else:
+                cv2.rectangle(
+                    image,
+                    (x1, y1),
+                    (x2, y2),
+                    (0, 255, 0),
+                    2,
+                )
 
             track_label = (
                 f"ID {obj.track_id} " if obj.track_id is not None else ""
             )
             cv2.putText(
                 image,
-                f"{track_label}object {obj.confidence:.2f}",
+                f"{track_label}{class_name} {obj.confidence:.2f}",
                 (x1, max(25, y1 - 8)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,

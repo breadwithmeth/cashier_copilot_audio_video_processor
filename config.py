@@ -7,14 +7,28 @@ import os
 
 SCAN_MODEL_PATH = Path("weights/yolov8s-worldv2.pt")
 SCAN_WORLD_PROMPTS = [
-    "retail product",
-    "product package",
-    "bottle",
-    "can",
-    "box",
-    "bag",
-    "fruit",
-    "vegetable",
+    "beer",
+    "wine",
+    "vodka",
+    "whiskey",
+    "cognac",
+    "rum",
+    "gin",
+    "tequila",
+    "cider",
+    "energy drink",
+    "soft drink",
+    "water",
+    "juice",
+    "chips",
+    "nuts",
+    "chocolate",
+    "cigarettes",
+    "lighter",
+    "glass bottle",
+    "plastic bottle",
+    "aluminum can",
+    "product"
 ]
 POSE_MODEL_PATH = "yolo11n-pose.pt"
 
@@ -81,7 +95,7 @@ DATASET_TRACK_TIMEOUT = float(os.getenv("DATASET_TRACK_TIMEOUT", "2.0"))
 
 STREAMS = {
     "cam10": {
-        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=4&subtype=0",
+        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=10&subtype=0",
         "audio_url": "rtsp://100.96.0.32:8554/microphone",
 
         "scan_roi": (
