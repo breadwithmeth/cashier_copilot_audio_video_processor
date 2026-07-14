@@ -5,30 +5,46 @@ import os
 # MODELS
 # ===========================
 
+# Scan detector backend:
+# - "yolo": trained closed-set detector from SCAN_MODEL_PATH
+# - "yolo_world": prompt-based YOLO-World from SCAN_MODEL_PATH
+# - "owlv2": prompt-based OWLv2 from SCAN_OWLV2_MODEL
+# - "omdet_turbo": prompt-based OmDet-Turbo from SCAN_OMDET_MODEL
+SCAN_BACKEND = "omdet_turbo"
+
+# SCAN_MODEL_PATH = Path("runs/dataset1_detector/dataset1_640/weights/best.pt")
+# SCAN_WORLD_PROMPTS = []
+
+# YOLO-World fallback. Uncomment both lines below to switch from the trained
+# dataset1 detector back to prompt-based open-vocabulary detection.
 SCAN_MODEL_PATH = Path("weights/yolov8s-worldv2.pt")
-SCAN_WORLD_PROMPTS = [
-    "beer",
-    "wine",
-    "vodka",
-    "whiskey",
-    "cognac",
-    "rum",
-    "gin",
-    "tequila",
-    "cider",
-    "energy drink",
-    "soft drink",
-    "water",
-    "juice",
-    "chips",
-    "nuts",
-    "chocolate",
-    "cigarettes",
-    "lighter",
-    "glass bottle",
-    "plastic bottle",
-    "aluminum can",
-    "product"
+SCAN_WORLD_PROMPTS = ["bottle", "can", "food", "tobacco", "receipt", "barcode_scanner", "id_card", "digital_id", "bank_card", "business_card", "basket"]
+SCAN_OWLV2_MODEL = "google/owlv2-base-patch16-ensemble"
+SCAN_OWLV2_PROMPTS = [
+    "bottle",
+    "can",
+    "food",
+    "cigarette pack",
+    "id card",
+    "digital id",
+    "bank card",
+    "business card",
+    "basket",
+]
+SCAN_OMDET_MODEL = "omlab/omdet-turbo-swin-tiny-hf"
+SCAN_OMDET_PROMPTS = [
+    "bottle",
+    "can",
+    "food",
+    "cigarette pack",
+    "receipt",
+    "barcode scanner",
+    "id card",
+    "digital id",
+    "shopping bag",
+    "bank card",
+    "business card",
+    "basket",
 ]
 POSE_MODEL_PATH = "yolo11n-pose.pt"
 
@@ -38,7 +54,7 @@ POSE_MODEL_PATH = "yolo11n-pose.pt"
 
 TARGET_FPS = 15
 
-SCAN_CONFIDENCE = 0.2
+SCAN_CONFIDENCE = 0.4
 PERSON_CONFIDENCE = 0.4
 POSE_KEYPOINT_CONFIDENCE = 0.3
 

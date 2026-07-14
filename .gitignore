@@ -71,3 +71,4 @@ weights_old/
 # Library caches
 .matplotlib_cache/
 .cache/
+dataset1/

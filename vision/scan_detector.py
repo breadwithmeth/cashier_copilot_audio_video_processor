@@ -2,13 +2,19 @@ import time
 
 import cv2
 import numpy as np
-from ultralytics import YOLOWorld
+from PIL import Image
+from ultralytics import YOLO, YOLOWorld
 
 from config import (
+    SCAN_BACKEND,
     SCAN_MODEL_PATH,
     SCAN_CONFIDENCE,
     SCAN_IMAGE_SIZE,
     SCAN_WORLD_PROMPTS,
+    SCAN_OWLV2_MODEL,
+    SCAN_OWLV2_PROMPTS,
+    SCAN_OMDET_MODEL,
+    SCAN_OMDET_PROMPTS,
 )
 
 from models.detection import Detection, ScanResult
@@ -38,8 +44,26 @@ SPECIFIC_CLASS_BONUS = 0.03
 class ScanDetector:
     def __init__(self, roi):
         self.roi = roi
-        self.model = YOLOWorld(str(SCAN_MODEL_PATH))
-        self.model.set_classes(SCAN_WORLD_PROMPTS)
+        self.backend = SCAN_BACKEND
+        self.model = None
+        self.processor = None
+        self.device = None
+
+        if self.backend == "yolo":
+            self.model = YOLO(str(SCAN_MODEL_PATH))
+        elif self.backend == "yolo_world":
+            self.model = YOLOWorld(str(SCAN_MODEL_PATH))
+            if SCAN_WORLD_PROMPTS:
+                self.model.set_classes(SCAN_WORLD_PROMPTS)
+        elif self.backend == "owlv2":
+            self._load_owlv2()
+        elif self.backend == "omdet_turbo":
+            self._load_omdet_turbo()
+        else:
+            raise ValueError(
+                "SCAN_BACKEND must be one of: "
+                "yolo, yolo_world, owlv2, omdet_turbo"
+            )
 
     def detect(self, frame) -> ScanResult:
         roi_frame, clipped_roi = crop_roi(frame, self.roi)
@@ -50,6 +74,28 @@ class ScanDetector:
             return ScanResult(objects=[], process_ms=0)
 
         start = time.time()
+
+        if self.backend == "owlv2":
+            return self._detect_owlv2(
+                roi_frame=roi_frame,
+                clipped_roi=clipped_roi,
+                start=start,
+            )
+        if self.backend == "omdet_turbo":
+            return self._detect_omdet_turbo(
+                roi_frame=roi_frame,
+                clipped_roi=clipped_roi,
+                start=start,
+            )
+
+        return self._detect_ultralytics(
+            roi_frame=roi_frame,
+            clipped_roi=clipped_roi,
+            start=start,
+        )
+
+    def _detect_ultralytics(self, roi_frame, clipped_roi, start) -> ScanResult:
+        x1, y1, _, _ = clipped_roi
 
         results = self.model.track(
             source=roi_frame,
@@ -121,6 +167,154 @@ class ScanDetector:
             process_ms=process_ms,
         )
 
+    def _load_owlv2(self) -> None:
+        import torch
+        from transformers import Owlv2ForObjectDetection, Owlv2Processor
+
+        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        self.processor = Owlv2Processor.from_pretrained(SCAN_OWLV2_MODEL)
+        self.model = Owlv2ForObjectDetection.from_pretrained(
+            SCAN_OWLV2_MODEL
+        ).to(self.device).eval()
+
+    def _load_omdet_turbo(self) -> None:
+        import torch
+        from transformers import OmDetTurboForObjectDetection, OmDetTurboProcessor
+
+        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        self.processor = OmDetTurboProcessor.from_pretrained(SCAN_OMDET_MODEL)
+        self.model = OmDetTurboForObjectDetection.from_pretrained(
+            SCAN_OMDET_MODEL
+        ).to(self.device).eval()
+
+    def _detect_owlv2(self, roi_frame, clipped_roi, start) -> ScanResult:
+        import torch
+
+        x1, y1, _, _ = clipped_roi
+        image = Image.fromarray(cv2.cvtColor(roi_frame, cv2.COLOR_BGR2RGB))
+        texts = [SCAN_OWLV2_PROMPTS]
+        inputs = self.processor(
+            text=texts,
+            images=image,
+            return_tensors="pt",
+        ).to(self.device)
+
+        with torch.inference_mode():
+            outputs = self.model(**inputs)
+
+        target_sizes = torch.tensor(
+            [image.size[::-1]],
+            device=self.device,
+        )
+        results = self.processor.post_process_object_detection(
+            outputs=outputs,
+            target_sizes=target_sizes,
+            threshold=SCAN_CONFIDENCE,
+        )[0]
+
+        objects = []
+        for box, score, label in zip(
+            results["boxes"],
+            results["scores"],
+            results["labels"],
+        ):
+            bx1, by1, bx2, by2 = box.tolist()
+            local_bbox = (
+                int(bx1),
+                int(by1),
+                int(bx2),
+                int(by2),
+            )
+
+            if not bbox_center_in_roi(local_bbox, self.roi, x1, y1):
+                continue
+
+            full_bbox = offset_bbox(local_bbox, x1, y1)
+            class_name = SCAN_OWLV2_PROMPTS[int(label.item())].replace(" ", "_")
+            polygon = self._bbox_polygon(local_bbox, x1, y1)
+
+            objects.append(
+                Detection(
+                    class_name=class_name,
+                    confidence=float(score.item()),
+                    bbox=full_bbox,
+                    roi_name="scan_zone",
+                    track_id=None,
+                    polygon=polygon,
+                )
+            )
+
+        process_ms = int((time.time() - start) * 1000)
+
+        return ScanResult(
+            objects=self._deduplicate_objects(objects),
+            process_ms=process_ms,
+        )
+
+    def _detect_omdet_turbo(self, roi_frame, clipped_roi, start) -> ScanResult:
+        import torch
+
+        x1, y1, _, _ = clipped_roi
+        image = Image.fromarray(cv2.cvtColor(roi_frame, cv2.COLOR_BGR2RGB))
+        inputs = self.processor(
+            images=image,
+            text=SCAN_OMDET_PROMPTS,
+            return_tensors="pt",
+        ).to(self.device)
+
+        with torch.inference_mode():
+            outputs = self.model(**inputs)
+
+        target_sizes = torch.tensor(
+            [image.size[::-1]],
+            device=self.device,
+        )
+        results = self.processor.post_process_grounded_object_detection(
+            outputs=outputs,
+            classes=[SCAN_OMDET_PROMPTS],
+            score_threshold=SCAN_CONFIDENCE,
+            target_sizes=target_sizes,
+        )[0]
+
+        objects = []
+        for box, score, label in zip(
+            results["boxes"],
+            results["scores"],
+            results["classes"],
+        ):
+            bx1, by1, bx2, by2 = box.tolist()
+            local_bbox = (
+                int(bx1),
+                int(by1),
+                int(bx2),
+                int(by2),
+            )
+
+            if not bbox_center_in_roi(local_bbox, self.roi, x1, y1):
+                continue
+
+            full_bbox = offset_bbox(local_bbox, x1, y1)
+            class_name = self._prompt_label(SCAN_OMDET_PROMPTS, label)
+            polygon = self._bbox_polygon(local_bbox, x1, y1)
+
+            objects.append(
+                Detection(
+                    class_name=class_name,
+                    confidence=float(score.item()),
+                    bbox=full_bbox,
+                    roi_name="scan_zone",
+                    track_id=None,
+                    polygon=polygon,
+                )
+            )
+
+        process_ms = int((time.time() - start) * 1000)
+
+        return ScanResult(
+            objects=self._deduplicate_objects(objects),
+            process_ms=process_ms,
+        )
+
     @classmethod
     def _deduplicate_objects(cls, objects):
         kept = []
@@ -150,6 +344,15 @@ class ScanDetector:
             return 0
 
         return min(2, max(0, len(class_name.split()) - 1))
+
+    @staticmethod
+    def _prompt_label(prompts, label):
+        if hasattr(label, "item"):
+            label = label.item()
+        if isinstance(label, int):
+            return prompts[label].replace(" ", "_")
+
+        return str(label).replace(" ", "_")
 
     @staticmethod
     def _iou(first, second):
