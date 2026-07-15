@@ -230,14 +230,19 @@ class RTSPVisitTranscriber:
         rms = float(np.sqrt(np.mean(samples * samples))) if samples.size else 0.0
         if rms < self.minimum_audio_rms:
             return
-        with tempfile.NamedTemporaryFile(suffix=".wav") as temporary:
-            with wave.open(temporary.name, "wb") as wav:
+        temporary = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        temporary_path = Path(temporary.name)
+        temporary.close()
+        try:
+            with wave.open(str(temporary_path), "wb") as wav:
                 wav.setnchannels(1)
                 wav.setsampwidth(self.sample_width)
                 wav.setframerate(self.sample_rate)
                 wav.writeframes(pcm)
-            segments = self._transcribe(model, temporary.name)
+            segments = self._transcribe(model, str(temporary_path))
             text = " ".join(s["text"] for s in segments)
+        finally:
+            temporary_path.unlink(missing_ok=True)
         if text:
             with self._lock:
                 self._subtitle = text

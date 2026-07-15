@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 # ===========================
@@ -27,8 +28,8 @@ SCAN_DEVICE = "auto"
 
 # YOLO-World fallback. Uncomment both lines below to switch from the trained
 # dataset1 detector back to prompt-based open-vocabulary detection.
-# SCAN_MODEL_PATH = Path("weights/yolov8m-worldv2.pt")
-SCAN_MODEL_PATH = Path("runs/dataset1507_detector/dataset1507_mps/weights/best.pt")
+SCAN_MODEL_PATH = Path("weights/yolov8m-worldv2.pt")
+# SCAN_MODEL_PATH = Path("runs/dataset1507_detector/dataset1507_mps/weights/best.pt")
 # SCAN_WORLD_PROMPTS = ["bottle", "can", "tetra_pak", "pouch", "food", "cigarettes", "receipt", "barcode_scanner", "id_card", "phone", "shopping_bag", "bank_card", "business_card", "basket"]
 
 SCAN_WORLD_PROMPTS = [
@@ -176,9 +177,13 @@ CASHIER_TIMEOUT = 2.0
 # Set to False to run video analytics without RTSP audio and STT.
 SPEECH_RECOGNITION_ENABLED = True
 AUDIO_ONLY_VISIT_SECONDS = 300
-WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo-q4"
+WHISPER_MODEL = (
+    "large-v3-turbo"
+    if sys.platform == "win32"
+    else "mlx-community/whisper-large-v3-turbo-q4"
+)
 WHISPER_LANGUAGE = "ru"
-WHISPER_BACKEND = "gigaam"
+WHISPER_BACKEND = "faster-whisper" if sys.platform == "win32" else "gigaam"
 WHISPER_COMPUTE_TYPE = "int8"
 GIGAAM_MODEL = "v3_e2e_rnnt"
 # Keep GigaAM off MPS when video analytics also uses torch/transformers on macOS.

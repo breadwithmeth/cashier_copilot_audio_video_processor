@@ -6,7 +6,7 @@
 #   - cloudflared
 
 faster-whisper>=1.0.0
-gigaam[torch] @ git+https://github.com/salute-developers/GigaAM.git@85558932f047bf80d03f2b2e9dc2584c26e8bda6
+gigaam[torch] @ git+https://github.com/salute-developers/GigaAM.git@85558932f047bf80d03f2b2e9dc2584c26e8bda6; sys_platform != "win32"
 funasr>=1.2.0
 torchaudio>=2.0
 mlx-whisper>=0.4.0; sys_platform == "darwin"
