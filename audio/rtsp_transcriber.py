@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import numpy as np
 
+from analytics_violations import send_violation_event
 from config import (
     ANALYTICS_API_BASE_URL,
     ANALYTICS_API_KEY,
@@ -28,6 +29,25 @@ from config import (
     SERVICE_CHECKLIST_PROFILE,
 )
 from logic.service_checklist import evaluate_transcript
+
+
+SPEECH_CHECKLIST_VIOLATIONS = {
+    "payment_and_receipt": {
+        "code": "NO_PAYMENT_OR_RECEIPT_SPEECH",
+        "severity": "warning",
+        "message": "В речи визита не найден этап оплаты или чека",
+    },
+    "farewell_and_business_card": {
+        "code": "NO_FAREWELL",
+        "severity": "warning",
+        "message": "В речи визита не найдено прощание с покупателем",
+    },
+    "farewell": {
+        "code": "NO_FAREWELL",
+        "severity": "warning",
+        "message": "В речи визита не найдено прощание с покупателем",
+    },
+}
 
 
 class RTSPVisitTranscriber:
@@ -256,9 +276,42 @@ class RTSPVisitTranscriber:
 
         delivery = self._send_speech_event(result)
         result["analytics_delivery"] = delivery
+        result["violation_deliveries"] = self._send_checklist_violations(result)
         json_path.write_text(
             json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"[{self.name}] Transcript saved: {json_path}")
+
+    def _send_checklist_violations(self, result: dict) -> list[dict]:
+        deliveries = []
+        for item in result["service_checklist"]["results"]:
+            violation = SPEECH_CHECKLIST_VIOLATIONS.get(item["code"])
+            if violation is None or item["status"] != "failed":
+                continue
+            delivery = send_violation_event(
+                camera_name=self.name,
+                code=violation["code"],
+                severity=violation["severity"],
+                message=violation["message"],
+                started_at=result["started_at"],
+                ended_at=result["ended_at"],
+                duration_seconds=result["duration"],
+                payload={
+                    "visitId": result["visit_id"],
+                    "checklistProfile": result["service_checklist"]["profile"],
+                    "checklistRuleCode": item["code"],
+                    "checklistRuleTitle": item["title"],
+                    "missingReason": item["missingReason"],
+                    "evidence": item["evidence"],
+                },
+                source="cashier_copilot_speech_checklist",
+                correlation_id=result["visit_id"],
+            )
+            deliveries.append({
+                "eventType": violation["code"],
+                "ruleCode": item["code"],
+                "delivery": delivery,
+            })
+        return deliveries
 
     def _send_speech_event(self, result: dict) -> dict:
         text = self._segments_text(result["segments"])
