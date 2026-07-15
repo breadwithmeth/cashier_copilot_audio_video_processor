@@ -18,8 +18,10 @@ from config import (
     SCAN_IMAGE_SIZE,
     SCAN_WORLD_PROMPTS,
     SCAN_OWLV2_MODEL,
+    SCAN_OWLV2_CLASSES,
     SCAN_OWLV2_PROMPTS,
     SCAN_OMDET_MODEL,
+    SCAN_OMDET_CLASSES,
     SCAN_OMDET_PROMPTS,
     SCAN_SMOLVLM_INTERVAL_SECONDS,
     SCAN_SMOLVLM_MODEL,
@@ -270,7 +272,7 @@ class ScanDetector:
                 continue
 
             full_bbox = offset_bbox(local_bbox, x1, y1)
-            class_name = SCAN_OWLV2_PROMPTS[int(label.item())].replace(" ", "_")
+            class_name = SCAN_OWLV2_CLASSES[int(label.item())]["label"].replace(" ", "_")
             polygon = self._bbox_polygon(local_bbox, x1, y1)
 
             objects.append(
@@ -334,7 +336,7 @@ class ScanDetector:
                 continue
 
             full_bbox = offset_bbox(local_bbox, x1, y1)
-            class_name = self._prompt_label(SCAN_OMDET_PROMPTS, label)
+            class_name = self._omdet_label(label)
             polygon = self._bbox_polygon(local_bbox, x1, y1)
 
             objects.append(
@@ -444,6 +446,20 @@ class ScanDetector:
             return prompts[label].replace(" ", "_")
 
         return str(label).replace(" ", "_")
+
+    @staticmethod
+    def _omdet_label(label):
+        if hasattr(label, "item"):
+            label = label.item()
+        if isinstance(label, int):
+            return SCAN_OMDET_CLASSES[label]["label"].replace(" ", "_")
+
+        label_text = str(label)
+        for item in SCAN_OMDET_CLASSES:
+            if label_text == item["prompt"]:
+                return item["label"].replace(" ", "_")
+
+        return label_text.replace(" ", "_")
 
     @staticmethod
     def _parse_smolvlm_labels(text):

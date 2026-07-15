@@ -64,7 +64,7 @@ ffmpeg -version
 Локальные веса:
 
 ```text
-weights/yolov8s-worldv2.pt
+weights/yolov8m-worldv2.pt
 yolo11n-pose.pt
 ```
 
@@ -239,6 +239,28 @@ Backend:
 export WHISPER_COMPUTE_TYPE=int8
 ```
 
+### Чек-лист обслуживания
+
+После распознавания речи визита формируется `service_checklist` по стандартам обслуживания из регламента и приложений:
+
+- `ordinary_point` — бармен-кассир обычной точки;
+- `draft_wall` — бармен-универсал за разливной стенкой;
+- `market` — бармен-кассир/кассир точки Маркета.
+
+Профиль по умолчанию задается в `config.py`:
+
+```python
+SERVICE_CHECKLIST_PROFILE = "ordinary_point"
+```
+
+Для отдельной камеры можно переопределить профиль в `STREAMS`:
+
+```python
+"service_profile": "market"
+```
+
+Речевые пункты проверяются по транскрипту. Пункты, которым нужны видео, POS или ручное подтверждение, остаются в статусе `unobserved`.
+
 ### Субтитры
 
 Речь распознаётся перекрывающимися окнами. Справа показываются фразы за последние 10 секунд. Тихие фрагменты отбрасываются по RMS. Для GigaAM записи длиннее 25 секунд автоматически режутся на 24-секундные части, а word-level timestamps объединяются в общую шкалу визита.
@@ -262,6 +284,11 @@ transcripts/
   "segments": [
     {"start": 3.24, "end": 5.81, "text": "Здравствуйте"}
   ],
+  "service_checklist": {
+    "profile": "ordinary_point",
+    "summary": {"passed": 1, "failed": 6, "unobserved": 0, "total": 7},
+    "results": []
+  },
   "audio_file": "cam10_20260712_120000_ab12cd34.wav"
 }
 ```

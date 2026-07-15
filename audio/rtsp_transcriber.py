@@ -25,7 +25,9 @@ from config import (
     ANALYTICS_REGISTER_CODE,
     ANALYTICS_SEND_TIMEOUT,
     ANALYTICS_STORE_CODE,
+    SERVICE_CHECKLIST_PROFILE,
 )
+from logic.service_checklist import evaluate_transcript
 
 
 class RTSPVisitTranscriber:
@@ -40,7 +42,7 @@ class RTSPVisitTranscriber:
     def __init__(self, name: str, url: str, output_dir: Path, model: str,
                  language: str = "ru", prebuffer_seconds: float = 5.0,
                  backend: str = "auto", compute_type: str = "int8",
-                 device: str = "auto"):
+                 device: str = "auto", service_profile: str | None = None):
         self.name = name
         self.url = url
         self.output_dir = output_dir
@@ -50,6 +52,7 @@ class RTSPVisitTranscriber:
                         else "faster-whisper" if backend == "auto" else backend)
         self.compute_type = compute_type
         self.device = device
+        self.service_profile = service_profile or SERVICE_CHECKLIST_PROFILE
         self._prebuffer = deque(maxlen=max(1, int(prebuffer_seconds * 10)))
         self._lock = threading.Lock()
         self._session: dict | None = None
@@ -232,6 +235,10 @@ class RTSPVisitTranscriber:
             wav.writeframes(session["pcm"])
 
         transcript = self._transcribe(model, str(wav_path))
+        checklist = evaluate_transcript(
+            self._segments_text(transcript),
+            profile=self.service_profile,
+        ).to_dict()
         result = {
             "camera": self.name,
             "visit_id": session["id"],
@@ -240,6 +247,7 @@ class RTSPVisitTranscriber:
             "duration": round(session["ended_at"] - session["started_at"], 3),
             "timestamps_relative_to": "customer_arrived",
             "segments": transcript,
+            "service_checklist": checklist,
             "audio_file": wav_path.name,
         }
         json_path = wav_path.with_suffix(".json")
@@ -281,6 +289,7 @@ class RTSPVisitTranscriber:
                 "visitId": result["visit_id"],
                 "duration": result["duration"],
                 "segments": result["segments"],
+                "serviceChecklist": result["service_checklist"],
                 "audioFile": result["audio_file"],
                 "timestampsRelativeTo": result["timestamps_relative_to"],
             },

@@ -77,6 +77,7 @@ def create_camera(camera_name, cfg):
             compute_type=WHISPER_COMPUTE_TYPE,
             device=GIGAAM_DEVICE,
             prebuffer_seconds=max(5.0, cfg.get("customer_timeout", 0)),
+            service_profile=cfg.get("service_profile"),
         )
 
     return {

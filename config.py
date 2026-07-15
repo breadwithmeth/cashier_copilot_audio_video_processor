@@ -4,10 +4,10 @@ from pathlib import Path
 # LOCATION / DEVICE IDENTITY
 # ===========================
 
-STORE_CODE = "shahterov-52"
-REGISTER_CODE = "kassa-1-shahterov-52"
-CAMERA_CODE = "kassa-1-shahterov-52-camera"
-CAMERA_NAME = "Kassa 1 shahterov 52 camera"
+STORE_CODE = "tolstogo-90"
+REGISTER_CODE = "register-1"
+CAMERA_CODE = "cam10"
+CAMERA_NAME = "Checkout camera"
 
 # ===========================
 # MODELS
@@ -19,7 +19,7 @@ CAMERA_NAME = "Kassa 1 shahterov 52 camera"
 # - "owlv2": prompt-based OWLv2 from SCAN_OWLV2_MODEL
 # - "omdet_turbo": prompt-based OmDet-Turbo from SCAN_OMDET_MODEL
 # - "smolvlm": image-to-text VLM labeler, no real bbox output
-SCAN_BACKEND = "omdet_turbo"
+SCAN_BACKEND = "yolo_world"
 SCAN_DEVICE = "auto"
 
 # SCAN_MODEL_PATH = Path("runs/dataset1_detector/dataset1_640/weights/best.pt")
@@ -27,49 +27,119 @@ SCAN_DEVICE = "auto"
 
 # YOLO-World fallback. Uncomment both lines below to switch from the trained
 # dataset1 detector back to prompt-based open-vocabulary detection.
-SCAN_MODEL_PATH = Path("weights/yolov8s-worldv2.pt")
+SCAN_MODEL_PATH = Path("weights/yolov8m-worldv2.pt")
 # SCAN_WORLD_PROMPTS = ["bottle", "can", "tetra_pak", "pouch", "food", "cigarettes", "receipt", "barcode_scanner", "id_card", "phone", "shopping_bag", "bank_card", "business_card", "basket"]
 
-SCAN_WORLD_PROMPTS = ["cigarette pack"]
+SCAN_WORLD_PROMPTS = [
+    "bottle",
+    "carton",
+    "can",
+    "jar",
+    "box",
+    "tray",
+    "container",
+    "pouch",
+    "package",
+    "tube",
+    "bag",
+    "cup",
+    "fruit",
+    "vegetable",
+    "bread",
+    "eggs",
+    "scanner",
+    "terminal",
+    "receipt",
+    "card",
+    "money",
+    "passport",
+]
 
 SCAN_OWLV2_MODEL = "google/owlv2-base-patch16-ensemble"
-SCAN_OWLV2_PROMPTS = [
-    "bottle",
-    "can",
-    "food",
-    "cigarette pack",
-    "id card",
-    "digital id",
-    "bank card",
-    "business card",
-    "basket",
+SCAN_OWLV2_CLASSES = [
+    {"label": "bottle", "prompt": "plastic bottle or glass drink bottle"},
+    {"label": "carton", "prompt": "milk carton or juice carton"},
+    {"label": "can", "prompt": "metal can or aluminum drink can"},
+    {"label": "jar", "prompt": "glass jar with food or drink"},
+    {"label": "box", "prompt": "cardboard product box"},
+    {"label": "tray", "prompt": "plastic food tray"},
+    {"label": "container", "prompt": "plastic food container"},
+    {"label": "pouch", "prompt": "plastic pouch package"},
+    {"label": "package", "prompt": "sealed retail package"},
+    {"label": "tube", "prompt": "paste tube or squeeze tube"},
+    {"label": "bag", "prompt": "plastic shopping bag"},
+    {"label": "cup", "prompt": "paper cup or disposable cup"},
+    {"label": "fruit", "prompt": "fresh fruit"},
+    {"label": "vegetable", "prompt": "fresh vegetable"},
+    {"label": "bread", "prompt": "bread or bakery product"},
+    {"label": "eggs", "prompt": "eggs or egg carton"},
+    {"label": "scanner", "prompt": "barcode scanner"},
+    {"label": "terminal", "prompt": "payment terminal card reader"},
+    {"label": "receipt", "prompt": "paper receipt"},
+    {"label": "card", "prompt": "credit card or bank card"},
+    {"label": "money", "prompt": "cash banknote money"},
+    {"label": "passport", "prompt": "passport document"},
 ]
+SCAN_OWLV2_PROMPTS = [item["prompt"] for item in SCAN_OWLV2_CLASSES]
 SCAN_OMDET_MODEL = "omlab/omdet-turbo-swin-tiny-hf"
-SCAN_OMDET_PROMPTS = [
-    "cigarette pack"
+SCAN_OMDET_CLASSES = [
+    {"label": "bottle", "prompt": "plastic bottle or glass drink bottle"},
+    {"label": "carton", "prompt": "milk carton or juice carton"},
+    {"label": "can", "prompt": "metal can or aluminum drink can"},
+    {"label": "jar", "prompt": "glass jar with food or drink"},
+    {"label": "box", "prompt": "cardboard product box"},
+    {"label": "tray", "prompt": "plastic food tray"},
+    {"label": "container", "prompt": "plastic food container"},
+    {"label": "pouch", "prompt": "plastic pouch package"},
+    {"label": "package", "prompt": "sealed retail package"},
+    {"label": "tube", "prompt": "paste tube or squeeze tube"},
+    {"label": "bag", "prompt": "plastic shopping bag"},
+    {"label": "cup", "prompt": "paper cup or disposable cup"},
+    {"label": "fruit", "prompt": "fresh fruit"},
+    {"label": "vegetable", "prompt": "fresh vegetable"},
+    {"label": "bread", "prompt": "bread or bakery product"},
+    {"label": "eggs", "prompt": "eggs or egg carton"},
+    {"label": "scanner", "prompt": "barcode scanner"},
+    {"label": "terminal", "prompt": "payment terminal card reader"},
+    {"label": "receipt", "prompt": "paper receipt"},
+    {"label": "card", "prompt": "credit card or bank card"},
+    {"label": "money", "prompt": "cash banknote money"},
+    {"label": "passport", "prompt": "passport document"},
 ]
+SCAN_OMDET_PROMPTS = [item["prompt"] for item in SCAN_OMDET_CLASSES]
 SCAN_SMOLVLM_MODEL = "HuggingFaceTB/SmolVLM-500M-Instruct"
 SCAN_SMOLVLM_INTERVAL_SECONDS = 2.0
 SCAN_SMOLVLM_PROMPTS = [
     "bottle",
+    "carton",
     "can",
-    "food",
-    "tobacco",
+    "jar",
+    "box",
+    "tray",
+    "container",
+    "pouch",
+    "package",
+    "tube",
+    "bag",
+    "cup",
+    "fruit",
+    "vegetable",
+    "bread",
+    "eggs",
+    "scanner",
+    "terminal",
     "receipt",
-    "barcode scanner",
-    "id card",
-    "digital id",
-    "shopping bag",
-    "bank card",
-    "business card",
-    "basket",
+    "card",
+    "money",
+    "passport",
 ]
 SCAN_SMOLVLM_PROMPT = (
     "Look at the cashier scan area image. Identify only visible retail objects "
-    "from this allowed list: bottle, can, food, tobacco, receipt, barcode "
-    "scanner, id card, digital id, shopping bag, bank card, business card, "
-    "basket. Return only a JSON array of unique labels from the allowed list, "
-    "for example [\"bottle\", \"food\"]. If none are visible, return []."
+    "from this allowed list: bottle, carton, can, jar, box, tray, container, "
+    "pouch, package, tube, bag, cup, fruit, vegetable, bread, eggs, scanner, "
+    "terminal, receipt, card, money, passport. Return only a JSON array of "
+    "unique labels from the allowed list, for example [\"bottle\", \"carton\"]. "
+    "If none are visible, return []."
 )
 POSE_MODEL_PATH = "yolo11n-pose.pt"
 
@@ -80,7 +150,7 @@ POSE_MODEL_PATH = "yolo11n-pose.pt"
 TARGET_FPS = 5
 VIDEO_ANALYTICS_ENABLED = True
 
-SCAN_CONFIDENCE = 0.45
+SCAN_CONFIDENCE = 0.2
 PERSON_CONFIDENCE = 0.4
 POSE_KEYPOINT_CONFIDENCE = 0.3
 
@@ -115,6 +185,7 @@ GIGAAM_MODEL = "v3_e2e_rnnt"
 GIGAAM_DEVICE = "cpu"
 SENSEVOICE_MODEL = "FunAudioLLM/SenseVoiceSmall"
 TRANSCRIPTS_DIR = Path("transcripts")
+SERVICE_CHECKLIST_PROFILE = "ordinary_point"
 
 ANALYTICS_API_BASE_URL = "https://bmon.gradusy24.kz/api/v1"
 ANALYTICS_API_KEY = "analytics_key_NbeYMFPwY9spmfKd5h56fZsC_sF2RQ1A7-QTAnI1"
@@ -142,8 +213,9 @@ DATASET_TRACK_TIMEOUT = 2.0
 
 STREAMS = {
     CAMERA_CODE: {
-        "url": "rtsp://admin:Dotadota123%21@127.0.0.1:8554/cam/realmonitor?channel=8&subtype=0",
+        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=10&subtype=0",
         "audio_url": "rtsp://100.96.0.32:8554/mic",
+        "service_profile": SERVICE_CHECKLIST_PROFILE,
 
         "scan_roi": (
             (1250, 100),
