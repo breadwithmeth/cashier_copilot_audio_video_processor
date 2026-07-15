@@ -27,7 +27,8 @@ SCAN_DEVICE = "auto"
 
 # YOLO-World fallback. Uncomment both lines below to switch from the trained
 # dataset1 detector back to prompt-based open-vocabulary detection.
-SCAN_MODEL_PATH = Path("weights/yolov8m-worldv2.pt")
+# SCAN_MODEL_PATH = Path("weights/yolov8m-worldv2.pt")
+SCAN_MODEL_PATH = Path("runs/dataset1507_detector/dataset1507_mps/weights/best.pt")
 # SCAN_WORLD_PROMPTS = ["bottle", "can", "tetra_pak", "pouch", "food", "cigarettes", "receipt", "barcode_scanner", "id_card", "phone", "shopping_bag", "bank_card", "business_card", "basket"]
 
 SCAN_WORLD_PROMPTS = [
@@ -193,6 +194,9 @@ ANALYTICS_STORE_CODE = STORE_CODE
 ANALYTICS_REGISTER_CODE = REGISTER_CODE
 ANALYTICS_AUDIO_SOURCE = "EXTERNAL_MICROPHONE_RTSP"
 ANALYTICS_SEND_TIMEOUT = 10
+ANALYTICS_VIOLATION_EVENTS_PATH = "/analytics/video/events"
+CUSTOMER_WAITING_VIOLATION_SECONDS = 20.0
+VIOLATION_EVENT_COOLDOWN_SECONDS = 300.0
 ROI_REFERENCE_UPLOAD_TIMEOUT = 15
 ROI_REFERENCE_CAPTURE_TIMEOUT = 15
 ANALYTICS_ROI_FETCH_ENABLED = True

@@ -12,6 +12,7 @@ from config import (STREAMS, TARGET_FPS, SPEECH_RECOGNITION_ENABLED,
 from config import (DATASET_COLLECTION_ENABLED, DATASET_DIR,
                     DATASET_TRACK_TIMEOUT, ANALYTICS_ROI_FETCH_ENABLED)
 from analytics_rois import apply_backend_rois
+from analytics_violations import VideoViolationMonitor
 from audio.rtsp_transcriber import RTSPVisitTranscriber
 from dataset.object_collector import ObjectDatasetCollector
 
@@ -54,6 +55,7 @@ def create_camera(camera_name, cfg):
         )
 
     state = CheckoutState()
+    violation_monitor = VideoViolationMonitor(camera_name)
 
     dataset_collector = None
     if DATASET_COLLECTION_ENABLED and VIDEO_ANALYTICS_ENABLED:
@@ -88,6 +90,7 @@ def create_camera(camera_name, cfg):
         "overlay": overlay,
         "transcriber": transcriber,
         "dataset_collector": dataset_collector,
+        "violation_monitor": violation_monitor,
         "audio_only_visit_started_at": None,
     }
 
@@ -144,6 +147,7 @@ def main():
                     cashier_detected=person_result.cashier_detected,
                     scan_objects=scan_result.objects,
                 )
+                camera["violation_monitor"].evaluate(camera["state"])
 
                 transcriber = camera["transcriber"]
                 if transcriber is not None:
@@ -187,6 +191,8 @@ def main():
                 camera["transcriber"].stop()
             if camera["dataset_collector"] is not None:
                 camera["dataset_collector"].stop()
+            if camera["violation_monitor"] is not None:
+                camera["violation_monitor"].stop()
 
         cv2.destroyAllWindows()
 

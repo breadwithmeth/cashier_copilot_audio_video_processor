@@ -13,6 +13,9 @@ from models.person import HandPose, PersonDetection, PersonResult
 from vision.roi import crop_roi, offset_bbox
 
 
+UPPER_BODY_RATIO = 0.55
+
+
 class PersonDetector:
     def __init__(
         self,
@@ -86,6 +89,7 @@ class PersonDetector:
                     x1,
                     y1,
                 )
+                upper_body_bbox = self._upper_body_bbox(full_bbox)
 
                 hands = self._extract_hands(
                     result,
@@ -94,12 +98,12 @@ class PersonDetector:
                     offset_y=y1,
                 )
 
-                for role in self._roles_for_bbox(full_bbox):
+                for role in self._roles_for_bbox(upper_body_bbox):
                     persons.append(
                         PersonDetection(
                             role=role,
                             confidence=conf,
-                            bbox=full_bbox,
+                            bbox=upper_body_bbox,
                             hands=hands,
                         )
                     )
@@ -172,21 +176,29 @@ class PersonDetector:
         )
 
     def _roles_for_bbox(self, bbox):
-        x1, _, x2, y2 = bbox
-        bottom_center = (
+        x1, y1, x2, y2 = bbox
+        upper_body_center = (
             int((x1 + x2) / 2),
-            y2,
+            int((y1 + y2) / 2),
         )
 
         roles = []
 
-        if self._point_in_roi(bottom_center, self.customer_roi):
+        if self._point_in_roi(upper_body_center, self.customer_roi):
             roles.append("customer")
 
-        if self._point_in_roi(bottom_center, self.cashier_roi):
+        if self._point_in_roi(upper_body_center, self.cashier_roi):
             roles.append("cashier")
 
         return roles
+
+    @staticmethod
+    def _upper_body_bbox(bbox):
+        x1, y1, x2, y2 = bbox
+        height = max(0, y2 - y1)
+        upper_y2 = y1 + int(height * UPPER_BODY_RATIO)
+
+        return x1, y1, x2, upper_y2
 
     @staticmethod
     def _point_in_roi(point, roi):

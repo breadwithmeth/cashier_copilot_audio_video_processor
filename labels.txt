@@ -20,3 +20,4 @@ receipt
 card
 money
 passport
+cigarette
