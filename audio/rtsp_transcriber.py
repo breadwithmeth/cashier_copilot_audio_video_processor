@@ -8,6 +8,8 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 import wave
 from collections import deque
 from datetime import datetime
@@ -15,6 +17,15 @@ from pathlib import Path
 from uuid import uuid4
 
 import numpy as np
+
+from config import (
+    ANALYTICS_API_BASE_URL,
+    ANALYTICS_API_KEY,
+    ANALYTICS_AUDIO_SOURCE,
+    ANALYTICS_REGISTER_CODE,
+    ANALYTICS_SEND_TIMEOUT,
+    ANALYTICS_STORE_CODE,
+)
 
 
 class RTSPVisitTranscriber:
@@ -231,9 +242,106 @@ class RTSPVisitTranscriber:
             "segments": transcript,
             "audio_file": wav_path.name,
         }
-        wav_path.with_suffix(".json").write_text(
+        json_path = wav_path.with_suffix(".json")
+        json_path.write_text(
             json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[{self.name}] Transcript saved: {wav_path.with_suffix('.json')}")
+
+        delivery = self._send_speech_event(result)
+        result["analytics_delivery"] = delivery
+        json_path.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[{self.name}] Transcript saved: {json_path}")
+
+    def _send_speech_event(self, result: dict) -> dict:
+        text = self._segments_text(result["segments"])
+        if not text:
+            print(f"[{self.name}] Speech event skipped: empty transcript")
+            return {"status": "skipped", "reason": "empty_transcript"}
+        if not ANALYTICS_API_BASE_URL or not ANALYTICS_API_KEY:
+            print(f"[{self.name}] Speech event skipped: analytics API is not configured")
+            return {"status": "skipped", "reason": "analytics_api_not_configured"}
+
+        started_at_ms = int(datetime.fromisoformat(result["started_at"]).timestamp() * 1000)
+        external_event_id = f"{self.name}-audio-{started_at_ms}-{result['visit_id'][:8]}"
+        payload = {
+            "externalEventId": external_event_id,
+            "idempotencyKey": external_event_id,
+            "cameraCode": self.name,
+            "eventType": "SPEECH_RECOGNIZED",
+            "source": self.backend,
+            "occurredAt": result["started_at"],
+            "startedAt": result["started_at"],
+            "endedAt": result["ended_at"],
+            "speakerType": "UNKNOWN",
+            "language": self.language,
+            "text": text,
+            "audioSource": ANALYTICS_AUDIO_SOURCE,
+            "correlationId": result["visit_id"],
+            "payload": {
+                "visitId": result["visit_id"],
+                "duration": result["duration"],
+                "segments": result["segments"],
+                "audioFile": result["audio_file"],
+                "timestampsRelativeTo": result["timestamps_relative_to"],
+            },
+        }
+        if ANALYTICS_STORE_CODE:
+            payload["storeCode"] = ANALYTICS_STORE_CODE
+            payload["payload"]["storeCode"] = ANALYTICS_STORE_CODE
+        if ANALYTICS_REGISTER_CODE:
+            payload["registerCode"] = ANALYTICS_REGISTER_CODE
+
+        url = f"{ANALYTICS_API_BASE_URL}/analytics/audio/events"
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": ANALYTICS_API_KEY,
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=ANALYTICS_SEND_TIMEOUT,
+            ) as response:
+                response_body = response.read().decode("utf-8", errors="replace")
+            print(f"[{self.name}] Speech event sent: {external_event_id}")
+            return {
+                "status": "sent",
+                "endpoint": url,
+                "externalEventId": external_event_id,
+                "statusCode": response.status,
+                "response": response_body[:1000],
+            }
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8", errors="replace")
+            print(f"[{self.name}] Speech event HTTP error {error.code}: {body[:300]}")
+            return {
+                "status": "failed",
+                "endpoint": url,
+                "externalEventId": external_event_id,
+                "statusCode": error.code,
+                "error": body[:1000],
+            }
+        except (OSError, urllib.error.URLError) as error:
+            print(f"[{self.name}] Speech event send error: {error}")
+            return {
+                "status": "failed",
+                "endpoint": url,
+                "externalEventId": external_event_id,
+                "error": str(error),
+            }
+
+    @staticmethod
+    def _segments_text(segments: list[dict]) -> str:
+        return " ".join(
+            str(segment.get("text", "")).strip()
+            for segment in segments
+            if str(segment.get("text", "")).strip()
+        )
 
     def _transcribe(self, model, audio_path: str) -> list[dict]:
         if self.backend == "gigaam":

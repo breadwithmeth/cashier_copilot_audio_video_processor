@@ -72,3 +72,4 @@ weights_old/
 .matplotlib_cache/
 .cache/
 dataset1/
+cigarette_dataset/

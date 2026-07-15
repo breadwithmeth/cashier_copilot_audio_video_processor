@@ -1,4 +1,9 @@
+import json
+import os
+import re
 import time
+
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 import cv2
 import numpy as np
@@ -7,6 +12,7 @@ from ultralytics import YOLO, YOLOWorld
 
 from config import (
     SCAN_BACKEND,
+    SCAN_DEVICE,
     SCAN_MODEL_PATH,
     SCAN_CONFIDENCE,
     SCAN_IMAGE_SIZE,
@@ -15,6 +21,10 @@ from config import (
     SCAN_OWLV2_PROMPTS,
     SCAN_OMDET_MODEL,
     SCAN_OMDET_PROMPTS,
+    SCAN_SMOLVLM_INTERVAL_SECONDS,
+    SCAN_SMOLVLM_MODEL,
+    SCAN_SMOLVLM_PROMPT,
+    SCAN_SMOLVLM_PROMPTS,
 )
 
 from models.detection import Detection, ScanResult
@@ -48,6 +58,8 @@ class ScanDetector:
         self.model = None
         self.processor = None
         self.device = None
+        self._smolvlm_last_at = 0.0
+        self._smolvlm_cached_objects = []
 
         if self.backend == "yolo":
             self.model = YOLO(str(SCAN_MODEL_PATH))
@@ -59,10 +71,12 @@ class ScanDetector:
             self._load_owlv2()
         elif self.backend == "omdet_turbo":
             self._load_omdet_turbo()
+        elif self.backend == "smolvlm":
+            self._load_smolvlm()
         else:
             raise ValueError(
                 "SCAN_BACKEND must be one of: "
-                "yolo, yolo_world, owlv2, omdet_turbo"
+                "yolo, yolo_world, owlv2, omdet_turbo, smolvlm"
             )
 
     def detect(self, frame) -> ScanResult:
@@ -83,6 +97,12 @@ class ScanDetector:
             )
         if self.backend == "omdet_turbo":
             return self._detect_omdet_turbo(
+                roi_frame=roi_frame,
+                clipped_roi=clipped_roi,
+                start=start,
+            )
+        if self.backend == "smolvlm":
+            return self._detect_smolvlm(
                 roi_frame=roi_frame,
                 clipped_roi=clipped_roi,
                 start=start,
@@ -171,7 +191,7 @@ class ScanDetector:
         import torch
         from transformers import Owlv2ForObjectDetection, Owlv2Processor
 
-        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        self.device = self._torch_device(torch)
         self.processor = Owlv2Processor.from_pretrained(SCAN_OWLV2_MODEL)
         self.model = Owlv2ForObjectDetection.from_pretrained(
             SCAN_OWLV2_MODEL
@@ -181,11 +201,31 @@ class ScanDetector:
         import torch
         from transformers import OmDetTurboForObjectDetection, OmDetTurboProcessor
 
-        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        self.device = self._torch_device(torch)
         self.processor = OmDetTurboProcessor.from_pretrained(SCAN_OMDET_MODEL)
         self.model = OmDetTurboForObjectDetection.from_pretrained(
             SCAN_OMDET_MODEL
         ).to(self.device).eval()
+
+    def _load_smolvlm(self) -> None:
+        import torch
+        from transformers import AutoModelForVision2Seq, AutoProcessor
+
+        self.device = self._torch_device(torch)
+        dtype = torch.float16 if self.device == "mps" else torch.float32
+        self.processor = AutoProcessor.from_pretrained(SCAN_SMOLVLM_MODEL)
+        self.model = AutoModelForVision2Seq.from_pretrained(
+            SCAN_SMOLVLM_MODEL,
+            torch_dtype=dtype,
+            _attn_implementation="eager",
+        ).to(self.device).eval()
+
+    @staticmethod
+    def _torch_device(torch):
+        if SCAN_DEVICE != "auto":
+            return SCAN_DEVICE
+
+        return "mps" if torch.backends.mps.is_available() else "cpu"
 
     def _detect_owlv2(self, roi_frame, clipped_roi, start) -> ScanResult:
         import torch
@@ -315,6 +355,57 @@ class ScanDetector:
             process_ms=process_ms,
         )
 
+    def _detect_smolvlm(self, roi_frame, clipped_roi, start) -> ScanResult:
+        import torch
+
+        now = time.monotonic()
+        if now - self._smolvlm_last_at < SCAN_SMOLVLM_INTERVAL_SECONDS:
+            return ScanResult(
+                objects=list(self._smolvlm_cached_objects),
+                process_ms=0,
+            )
+
+        image = Image.fromarray(cv2.cvtColor(roi_frame, cv2.COLOR_BGR2RGB))
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": SCAN_SMOLVLM_PROMPT},
+                ],
+            },
+        ]
+        prompt = self.processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+        )
+        inputs = self.processor(
+            text=prompt,
+            images=[image],
+            return_tensors="pt",
+        ).to(self.device)
+
+        with torch.inference_mode():
+            generated_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=80,
+                do_sample=False,
+            )
+
+        input_length = inputs["input_ids"].shape[-1]
+        text = self.processor.decode(
+            generated_ids[0][input_length:],
+            skip_special_tokens=True,
+        )
+        labels = self._parse_smolvlm_labels(text)
+        objects = self._smolvlm_objects(labels, clipped_roi)
+        self._smolvlm_last_at = now
+        self._smolvlm_cached_objects = objects
+
+        process_ms = int((time.time() - start) * 1000)
+
+        return ScanResult(objects=objects, process_ms=process_ms)
+
     @classmethod
     def _deduplicate_objects(cls, objects):
         kept = []
@@ -353,6 +444,52 @@ class ScanDetector:
             return prompts[label].replace(" ", "_")
 
         return str(label).replace(" ", "_")
+
+    @staticmethod
+    def _parse_smolvlm_labels(text):
+        allowed = {label.lower(): label for label in SCAN_SMOLVLM_PROMPTS}
+        labels = []
+
+        try:
+            match = re.search(r"\[[\s\S]*\]", text)
+            parsed = json.loads(match.group(0) if match else text)
+            if isinstance(parsed, list):
+                candidates = parsed
+            else:
+                candidates = []
+        except (json.JSONDecodeError, TypeError):
+            lowered = text.lower()
+            candidates = [
+                label
+                for label in SCAN_SMOLVLM_PROMPTS
+                if label.lower() in lowered
+            ]
+
+        for candidate in candidates:
+            key = str(candidate).strip().lower().replace("_", " ")
+            label = allowed.get(key)
+            if label and label not in labels:
+                labels.append(label)
+
+        return labels
+
+    @classmethod
+    def _smolvlm_objects(cls, labels, clipped_roi):
+        x1, y1, x2, y2 = clipped_roi
+        bbox = (int(x1), int(y1), int(x2), int(y2))
+        polygon = cls._bbox_polygon((0, 0, x2 - x1, y2 - y1), x1, y1)
+
+        return [
+            Detection(
+                class_name=label.replace(" ", "_"),
+                confidence=0.5,
+                bbox=bbox,
+                roi_name="scan_zone",
+                track_id=None,
+                polygon=polygon,
+            )
+            for label in labels
+        ]
 
     @staticmethod
     def _iou(first, second):

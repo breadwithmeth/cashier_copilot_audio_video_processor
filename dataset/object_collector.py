@@ -39,7 +39,9 @@ class ObjectDatasetCollector:
             if track is None or score > track["score"]:
                 self._tracks[track_id] = {
                     "crop": crop.copy(), "score": score,
-                    "confidence": float(obj.confidence), "last_seen": now,
+                    "confidence": float(obj.confidence),
+                    "class_name": obj.class_name,
+                    "last_seen": now,
                 }
             else:
                 track["last_seen"] = now
@@ -63,13 +65,20 @@ class ObjectDatasetCollector:
         image_path = pending / f"{stem}.jpg"
         if not cv2.imwrite(str(image_path), track["crop"]):
             raise RuntimeError(f"Could not save dataset crop: {image_path}")
+        class_name = track.get("class_name", "product")
         sidecar = {
             "camera": self.camera_name,
             "track_id": track_id,
+            "label": class_name,
+            "class_name": class_name,
             "confidence": round(track["confidence"], 4),
             "created_at": datetime.now().astimezone().isoformat(),
             "status": "pending",
         }
         image_path.with_suffix(".json").write_text(
             json.dumps(sidecar, ensure_ascii=False, indent=2), encoding="utf-8")
+        image_path.with_suffix(".txt").write_text(
+            "0 0.5 0.5 0.98 0.98\n",
+            encoding="utf-8",
+        )
         print(f"[{self.camera_name}] Dataset crop saved: {image_path}")
