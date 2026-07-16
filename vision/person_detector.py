@@ -218,6 +218,7 @@ class PersonDetector:
 
         return "down"
 
+    @staticmethod
     def _combined_roi(customer_roi, cashier_roi):
         customer_x1, customer_y1, customer_x2, customer_y2 = customer_roi
         cashier_x1, cashier_y1, cashier_x2, cashier_y2 = cashier_roi

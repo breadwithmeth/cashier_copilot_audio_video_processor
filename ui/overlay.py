@@ -95,7 +95,18 @@ class Overlay:
         return cv2.cvtColor(np.asarray(canvas), cv2.COLOR_RGB2BGR)
 
     def _draw_roi(self, image, roi, label, color):
-        x1, y1, x2, y2 = roi_bounds(roi)
+        """Draw a ROI (rectangle or polygon) on the given image.
+
+        ``roi`` may be expressed in absolute pixel coordinates or as
+        normalized values (0‑1).  ``roi_bounds`` can scale normalized ROIs when
+        the ``frame`` argument is supplied, so we pass the current ``image``
+        to obtain pixel coordinates.  OpenCV drawing functions require integer
+        coordinates, therefore we cast the results to ``int``.
+        """
+        # Scale normalized ROI to pixel coordinates using the image size.
+        x1, y1, x2, y2 = roi_bounds(roi, image)
+        # Convert to integers for OpenCV.
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
         if is_rectangle_roi(roi):
             cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)

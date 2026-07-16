@@ -22,3 +22,4 @@ psycopg2-binary>=2.9
 shapely>=2.0
 ultralytics>=8.3
 webrtcvad>=2.0.10
+silero>=0.0.1
