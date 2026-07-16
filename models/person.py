@@ -21,6 +21,10 @@ class PersonDetection:
     confidence: float
     bbox: BBox
     hands: list[HandPose] | None = None
+    track_id: int | None = None
+    keypoints: list[tuple[int, int, float] | None] | None = None
+    action: str | None = None
+    action_confidence: float = 0.0
 
     @property
     def x1(self) -> int:

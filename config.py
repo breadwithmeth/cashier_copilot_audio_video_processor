@@ -34,79 +34,79 @@ SCAN_MODEL_PATH = Path("weights/yolov26_product_detection_v2_best.pt")
 
 SCAN_WORLD_PROMPTS = [
     "bottle",
-    "carton",
-    "can",
-    "jar",
-    "box",
-    "tray",
-    "container",
-    "pouch",
-    "package",
-    "tube",
-    "bag",
-    "cup",
-    "fruit",
-    "vegetable",
+    "milk carton",
+    "tin can",
+    "glass jar",
+    "cardboard box",
+    "plastic food tray",
+    "plastic container",
+    "plastic pouch",
+    "vacuum sealed package",
+    "paste tube",
+    "plastic shopping bag",
+    "paper cup",
+    "fresh produce",
     "bread",
     "eggs",
-    "scanner",
-    "terminal",
-    "receipt",
-    "card",
-    "money",
+    "barcode scanner",
+    "payment terminal",
+    "paper receipt",
+    "credit card",
+    "banknote",
     "passport",
+    "cigarette",
 ]
 
 SCAN_OWLV2_MODEL = "google/owlv2-base-patch16-ensemble"
 SCAN_OWLV2_CLASSES = [
     {"label": "bottle", "prompt": "plastic bottle or glass drink bottle"},
-    {"label": "carton", "prompt": "milk carton or juice carton"},
-    {"label": "can", "prompt": "metal can or aluminum drink can"},
-    {"label": "jar", "prompt": "glass jar with food or drink"},
-    {"label": "box", "prompt": "cardboard product box"},
-    {"label": "tray", "prompt": "plastic food tray"},
-    {"label": "container", "prompt": "plastic food container"},
-    {"label": "pouch", "prompt": "plastic pouch package"},
-    {"label": "package", "prompt": "sealed retail package"},
-    {"label": "tube", "prompt": "paste tube or squeeze tube"},
-    {"label": "bag", "prompt": "plastic shopping bag"},
-    {"label": "cup", "prompt": "paper cup or disposable cup"},
-    {"label": "fruit", "prompt": "fresh fruit"},
-    {"label": "vegetable", "prompt": "fresh vegetable"},
+    {"label": "milk_carton", "prompt": "milk carton or juice carton"},
+    {"label": "tin_can", "prompt": "tin can or aluminum drink can"},
+    {"label": "glass_jar", "prompt": "glass jar with food or drink"},
+    {"label": "cardboard_box", "prompt": "cardboard product box"},
+    {"label": "plastic_food_tray", "prompt": "plastic food tray"},
+    {"label": "plastic_container", "prompt": "plastic food container"},
+    {"label": "plastic_pouch", "prompt": "plastic pouch package"},
+    {"label": "vacuum_sealed_package", "prompt": "vacuum sealed retail package"},
+    {"label": "paste_tube", "prompt": "paste tube or squeeze tube"},
+    {"label": "plastic_shopping_bag", "prompt": "plastic shopping bag"},
+    {"label": "paper_cup", "prompt": "paper cup or disposable cup"},
+    {"label": "fresh_produce", "prompt": "fresh fruit or vegetable produce"},
     {"label": "bread", "prompt": "bread or bakery product"},
     {"label": "eggs", "prompt": "eggs or egg carton"},
-    {"label": "scanner", "prompt": "barcode scanner"},
-    {"label": "terminal", "prompt": "payment terminal card reader"},
-    {"label": "receipt", "prompt": "paper receipt"},
-    {"label": "card", "prompt": "credit card or bank card"},
-    {"label": "money", "prompt": "cash banknote money"},
+    {"label": "barcode_scanner", "prompt": "barcode scanner"},
+    {"label": "payment_terminal", "prompt": "payment terminal card reader"},
+    {"label": "paper_receipt", "prompt": "paper receipt"},
+    {"label": "credit_card", "prompt": "credit card or bank card"},
+    {"label": "banknote", "prompt": "cash banknote money"},
     {"label": "passport", "prompt": "passport document"},
+    {"label": "cigarette", "prompt": "cigarette pack"},
 ]
 SCAN_OWLV2_PROMPTS = [item["prompt"] for item in SCAN_OWLV2_CLASSES]
 SCAN_OMDET_MODEL = "omlab/omdet-turbo-swin-tiny-hf"
 SCAN_OMDET_CLASSES = [
     {"label": "bottle", "prompt": "plastic bottle or glass drink bottle"},
-    {"label": "carton", "prompt": "milk carton or juice carton"},
-    {"label": "can", "prompt": "metal can or aluminum drink can"},
-    {"label": "jar", "prompt": "glass jar with food or drink"},
-    {"label": "box", "prompt": "cardboard product box"},
-    {"label": "tray", "prompt": "plastic food tray"},
-    {"label": "container", "prompt": "plastic food container"},
-    {"label": "pouch", "prompt": "plastic pouch package"},
-    {"label": "package", "prompt": "sealed retail package"},
-    {"label": "tube", "prompt": "paste tube or squeeze tube"},
-    {"label": "bag", "prompt": "plastic shopping bag"},
-    {"label": "cup", "prompt": "paper cup or disposable cup"},
-    {"label": "fruit", "prompt": "fresh fruit"},
-    {"label": "vegetable", "prompt": "fresh vegetable"},
+    {"label": "milk_carton", "prompt": "milk carton or juice carton"},
+    {"label": "tin_can", "prompt": "tin can or aluminum drink can"},
+    {"label": "glass_jar", "prompt": "glass jar with food or drink"},
+    {"label": "cardboard_box", "prompt": "cardboard product box"},
+    {"label": "plastic_food_tray", "prompt": "plastic food tray"},
+    {"label": "plastic_container", "prompt": "plastic food container"},
+    {"label": "plastic_pouch", "prompt": "plastic pouch package"},
+    {"label": "vacuum_sealed_package", "prompt": "vacuum sealed retail package"},
+    {"label": "paste_tube", "prompt": "paste tube or squeeze tube"},
+    {"label": "plastic_shopping_bag", "prompt": "plastic shopping bag"},
+    {"label": "paper_cup", "prompt": "paper cup or disposable cup"},
+    {"label": "fresh_produce", "prompt": "fresh fruit or vegetable produce"},
     {"label": "bread", "prompt": "bread or bakery product"},
     {"label": "eggs", "prompt": "eggs or egg carton"},
-    {"label": "scanner", "prompt": "barcode scanner"},
-    {"label": "terminal", "prompt": "payment terminal card reader"},
-    {"label": "receipt", "prompt": "paper receipt"},
-    {"label": "card", "prompt": "credit card or bank card"},
-    {"label": "money", "prompt": "cash banknote money"},
+    {"label": "barcode_scanner", "prompt": "barcode scanner"},
+    {"label": "payment_terminal", "prompt": "payment terminal card reader"},
+    {"label": "paper_receipt", "prompt": "paper receipt"},
+    {"label": "credit_card", "prompt": "credit card or bank card"},
+    {"label": "banknote", "prompt": "cash banknote money"},
     {"label": "passport", "prompt": "passport document"},
+    {"label": "cigarette", "prompt": "cigarette pack"},
 ]
 SCAN_OMDET_PROMPTS = [item["prompt"] for item in SCAN_OMDET_CLASSES]
 SCAN_SMOLVLM_MODEL = "HuggingFaceTB/SmolVLM-500M-Instruct"
@@ -114,34 +114,37 @@ SCAN_RT_DETR_V2_MODEL = "nielsr/rtdetr-tray-cart-tuned-strong-20260303-204722"
 SCAN_SMOLVLM_INTERVAL_SECONDS = 2.0
 SCAN_SMOLVLM_PROMPTS = [
     "bottle",
-    "carton",
-    "can",
-    "jar",
-    "box",
-    "tray",
-    "container",
-    "pouch",
-    "package",
-    "tube",
-    "bag",
-    "cup",
-    "fruit",
-    "vegetable",
+    "milk_carton",
+    "tin_can",
+    "glass_jar",
+    "cardboard_box",
+    "plastic_food_tray",
+    "plastic_container",
+    "plastic_pouch",
+    "vacuum_sealed_package",
+    "paste_tube",
+    "plastic_shopping_bag",
+    "paper_cup",
+    "fresh_produce",
     "bread",
     "eggs",
-    "scanner",
-    "terminal",
-    "receipt",
-    "card",
-    "money",
+    "barcode_scanner",
+    "payment_terminal",
+    "paper_receipt",
+    "credit_card",
+    "banknote",
     "passport",
+    "cigarette",
 ]
 SCAN_SMOLVLM_PROMPT = (
     "Look at the cashier scan area image. Identify only visible retail objects "
-    "from this allowed list: bottle, carton, can, jar, box, tray, container, "
-    "pouch, package, tube, bag, cup, fruit, vegetable, bread, eggs, scanner, "
-    "terminal, receipt, card, money, passport. Return only a JSON array of "
-    "unique labels from the allowed list, for example [\"bottle\", \"carton\"]. "
+    "from this allowed list: bottle, milk_carton, tin_can, glass_jar, "
+    "cardboard_box, plastic_food_tray, plastic_container, plastic_pouch, "
+    "vacuum_sealed_package, paste_tube, plastic_shopping_bag, paper_cup, "
+    "fresh_produce, bread, eggs, barcode_scanner, payment_terminal, "
+    "paper_receipt, credit_card, banknote, passport, cigarette. Return only "
+    "a JSON array of unique labels from the allowed list, for example "
+    "[\"bottle\", \"milk_carton\"]. "
     "If none are visible, return []."
 )
 POSE_MODEL_PATH = "yolo11n-pose.pt"
@@ -160,6 +163,28 @@ SCAN_CLIP_CLASSIFICATION_ENABLED = True
 SCAN_CLIP_MODEL = "openai/clip-vit-base-patch32"
 SCAN_CLIP_LABELS_PATH = Path("labels.txt")
 SCAN_CLIP_MIN_CONFIDENCE = 0.0
+SCAN_CLIP_NEGATIVE_LABELS = [
+    "price tag",
+    "discount sticker",
+    "shelf label",
+    "advertising sticker",
+    "printed sign",
+    "store sign",
+    "poster",
+]
+SCAN_VLM_CLASSIFICATION_ENABLED = True
+SCAN_VLM_CLASSIFICATION_MODEL = "Qwen/Qwen2-VL-2B-Instruct"
+SCAN_VLM_CLASSIFICATION_LOCAL_FILES_ONLY = False
+SCAN_VLM_CLASSIFICATION_MODE = "all"  # "fallback" or "all"
+SCAN_VLM_CLASSIFICATION_MIN_CLIP_CONFIDENCE = 0.12
+SCAN_VLM_CLASSIFICATION_INTERVAL_SECONDS = 2.0
+SCAN_VLM_CLASSIFICATION_MAX_OBJECTS = 4
+SCAN_VLM_CLASSIFICATION_PROMPT = (
+    "Identify the main visible object in this crop from a checkout camera. "
+    "Return only one short English product or object label in snake_case. "
+    "Do not explain. If it is only a price tag, sticker, poster, shelf label, "
+    "background, hand, or unreadable fragment, return background."
+)
 
 # Full HD inference resolution (height, width).
 SCAN_IMAGE_SIZE = (1088, 1920)
@@ -180,7 +205,7 @@ CASHIER_TIMEOUT = 2.0
 # ===========================
 
 # Set to False to run video analytics without RTSP audio and STT.
-SPEECH_RECOGNITION_ENABLED = True
+SPEECH_RECOGNITION_ENABLED = False
 AUDIO_ONLY_VISIT_SECONDS = 300
 WHISPER_MODEL = (
     "large-v3-turbo"

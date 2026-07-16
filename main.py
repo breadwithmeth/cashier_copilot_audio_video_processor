@@ -20,6 +20,7 @@ from camera.rtsp_reader import RTSPReader
 
 from vision.scan_detector import ScanDetector
 from vision.person_detector import PersonDetector
+from vision.roi import clip_roi
 
 from logic.checkout_state import CheckoutState
 
@@ -92,7 +93,26 @@ def create_camera(camera_name, cfg):
         "dataset_collector": dataset_collector,
         "violation_monitor": violation_monitor,
         "audio_only_visit_started_at": None,
+        "roi_logged": False,
     }
+
+
+def log_camera_rois_once(camera_name, camera, frame):
+    if camera["roi_logged"]:
+        return
+
+    height, width = frame.shape[:2]
+    print(f"[{camera_name}] frame size: {width}x{height}")
+
+    rois = {
+        "scan_roi": camera["scan_detector"].roi,
+        "customer_roi": camera["person_detector"].customer_roi,
+        "cashier_roi": camera["person_detector"].cashier_roi,
+    }
+    for name, roi in rois.items():
+        print(f"[{camera_name}] {name}: configured={roi} clipped={clip_roi(roi, frame)}")
+
+    camera["roi_logged"] = True
 
 
 def main():
@@ -134,6 +154,8 @@ def main():
 
                 if frame is None:
                     continue
+
+                log_camera_rois_once(camera_name, camera, frame)
 
                 scan_result = camera["scan_detector"].detect(frame)
 

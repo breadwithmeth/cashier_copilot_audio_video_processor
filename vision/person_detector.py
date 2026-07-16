@@ -10,7 +10,8 @@ from config import (
 )
 
 from models.person import HandPose, PersonDetection, PersonResult
-from vision.roi import crop_roi, offset_bbox
+from vision.person_action import SkeletonActionBuffer
+from vision.roi import crop_roi, offset_bbox, scale_roi
 
 
 UPPER_BODY_RATIO = 0.55
@@ -26,6 +27,7 @@ class PersonDetector:
         self.cashier_roi = cashier_roi
 
         self.model = YOLO(POSE_MODEL_PATH)
+        self.action_buffer = SkeletonActionBuffer()
 
     def detect(self, frame) -> PersonResult:
         persons, process_ms = self._detect_persons(frame)
@@ -42,7 +44,12 @@ class PersonDetector:
         )
 
     def _detect_persons(self, frame):
-        roi_frame, clipped_roi = crop_roi(frame, self._combined_roi())
+        customer_roi = scale_roi(self.customer_roi, frame)
+        cashier_roi = scale_roi(self.cashier_roi, frame)
+        roi_frame, clipped_roi = crop_roi(
+            frame,
+            self._combined_roi(customer_roi, cashier_roi),
+        )
 
         x1, y1, _, _ = clipped_roi
 
@@ -51,10 +58,12 @@ class PersonDetector:
 
         start = time.time()
 
-        results = self.model.predict(
+        results = self.model.track(
             source=roi_frame,
             conf=PERSON_CONFIDENCE,
             imgsz=POSE_IMAGE_SIZE,
+            persist=True,
+            tracker="trackers/bytetrack_retail.yaml",
             verbose=False,
         )
 
@@ -69,6 +78,11 @@ class PersonDetector:
             for person_index, box in enumerate(result.boxes):
                 cls = int(box.cls.item())
                 conf = float(box.conf.item())
+                track_id = (
+                    int(box.id.item())
+                    if box.id is not None
+                    else None
+                )
 
                 class_name = self.model.names[cls]
 
@@ -97,17 +111,37 @@ class PersonDetector:
                     offset_x=x1,
                     offset_y=y1,
                 )
+                keypoints = self._extract_keypoints(
+                    result,
+                    person_index,
+                    offset_x=x1,
+                    offset_y=y1,
+                )
+                action = self.action_buffer.update(
+                    track_id=track_id,
+                    bbox=upper_body_bbox,
+                    keypoints=keypoints,
+                )
 
-                for role in self._roles_for_bbox(upper_body_bbox):
+                for role in self._roles_for_bbox(
+                    upper_body_bbox,
+                    customer_roi=customer_roi,
+                    cashier_roi=cashier_roi,
+                ):
                     persons.append(
                         PersonDetection(
                             role=role,
                             confidence=conf,
                             bbox=upper_body_bbox,
                             hands=hands,
+                            track_id=track_id,
+                            keypoints=keypoints,
+                            action=action.label,
+                            action_confidence=action.confidence,
                         )
                     )
 
+        self.action_buffer.prune()
         return persons, process_ms
 
     def _extract_hands(self, result, person_index, offset_x, offset_y):
@@ -144,6 +178,26 @@ class PersonDetector:
             ))
         return hands
 
+    def _extract_keypoints(self, result, person_index, offset_x, offset_y):
+        if result.keypoints is None or result.keypoints.xy is None:
+            return None
+
+        xy = result.keypoints.xy[person_index]
+        confidence = result.keypoints.conf
+        confidence = confidence[person_index] if confidence is not None else None
+
+        keypoints = []
+        for index, point in enumerate(xy):
+            score = float(confidence[index].item()) if confidence is not None else 1.0
+            if score < POSE_KEYPOINT_CONFIDENCE:
+                keypoints.append(None)
+                continue
+
+            px, py = point.tolist()
+            keypoints.append((int(px + offset_x), int(py + offset_y), score))
+
+        return keypoints
+
     @staticmethod
     def _classify_hand(shoulder, elbow, wrist):
         if shoulder is None or wrist is None:
@@ -164,9 +218,9 @@ class PersonDetector:
 
         return "down"
 
-    def _combined_roi(self):
-        customer_x1, customer_y1, customer_x2, customer_y2 = self.customer_roi
-        cashier_x1, cashier_y1, cashier_x2, cashier_y2 = self.cashier_roi
+    def _combined_roi(customer_roi, cashier_roi):
+        customer_x1, customer_y1, customer_x2, customer_y2 = customer_roi
+        cashier_x1, cashier_y1, cashier_x2, cashier_y2 = cashier_roi
 
         return (
             min(customer_x1, cashier_x1),
@@ -175,7 +229,7 @@ class PersonDetector:
             max(customer_y2, cashier_y2),
         )
 
-    def _roles_for_bbox(self, bbox):
+    def _roles_for_bbox(self, bbox, customer_roi, cashier_roi):
         x1, y1, x2, y2 = bbox
         upper_body_center = (
             int((x1 + x2) / 2),
@@ -184,10 +238,10 @@ class PersonDetector:
 
         roles = []
 
-        if self._point_in_roi(upper_body_center, self.customer_roi):
+        if self._point_in_roi(upper_body_center, customer_roi):
             roles.append("customer")
 
-        if self._point_in_roi(upper_body_center, self.cashier_roi):
+        if self._point_in_roi(upper_body_center, cashier_roi):
             roles.append("cashier")
 
         return roles

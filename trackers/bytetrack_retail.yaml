@@ -5,3 +5,4 @@ new_track_thresh: 0.15
 track_buffer: 90
 match_thresh: 0.90
 fuse_score: true
+gmc_method: none

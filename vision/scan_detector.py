@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import threading
 import time
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -20,6 +21,15 @@ from config import (
     SCAN_CLIP_LABELS_PATH,
     SCAN_CLIP_MIN_CONFIDENCE,
     SCAN_CLIP_MODEL,
+    SCAN_CLIP_NEGATIVE_LABELS,
+    SCAN_VLM_CLASSIFICATION_ENABLED,
+    SCAN_VLM_CLASSIFICATION_INTERVAL_SECONDS,
+    SCAN_VLM_CLASSIFICATION_LOCAL_FILES_ONLY,
+    SCAN_VLM_CLASSIFICATION_MAX_OBJECTS,
+    SCAN_VLM_CLASSIFICATION_MIN_CLIP_CONFIDENCE,
+    SCAN_VLM_CLASSIFICATION_MODE,
+    SCAN_VLM_CLASSIFICATION_MODEL,
+    SCAN_VLM_CLASSIFICATION_PROMPT,
     SCAN_WORLD_PROMPTS,
     SCAN_OWLV2_MODEL,
     SCAN_OWLV2_CLASSES,
@@ -36,7 +46,8 @@ from config import (
 
 from models.detection import Detection, ScanResult
 from vision.clip_classifier import ClipCropClassifier
-from vision.roi import bbox_center_in_roi, crop_roi, offset_bbox
+from vision.roi import bbox_center_in_roi, crop_roi, offset_bbox, scale_roi
+from vision.vlm_crop_classifier import VlmCropClassifier
 
 
 GENERIC_SCAN_CLASSES = {
@@ -57,6 +68,12 @@ GENERIC_SCAN_CLASSES = {
 
 DUPLICATE_IOU_THRESHOLD = 0.65
 SPECIFIC_CLASS_BONUS = 0.03
+SINGLE_INSTANCE_CLASSES = {
+    "scanner",
+    "barcode_scanner",
+}
+SCANNER_TRACK_ID = 1
+RESERVED_TRACK_ID_OFFSET = 100000
 
 
 class ScanDetector:
@@ -67,7 +84,15 @@ class ScanDetector:
         self.processor = None
         self.device = None
         self.clip_classifier = None
+        self.vlm_classifier = None
         self._clip_cache = {}
+        self._vlm_cache = {}
+        self._vlm_lock = threading.Lock()
+        self._vlm_loading = False
+        self._vlm_load_failed = False
+        self._smolvlm_lock = threading.Lock()
+        self._smolvlm_loading = False
+        self._smolvlm_load_failed = False
         self._smolvlm_last_at = 0.0
         self._smolvlm_cached_objects = []
 
@@ -84,7 +109,10 @@ class ScanDetector:
         elif self.backend == "rt_detr_v2":
             self._load_rt_detr_v2()
         elif self.backend == "smolvlm":
-            self._load_smolvlm()
+            print(
+                "SmolVLM detector will load in background on first use: "
+                f"{SCAN_SMOLVLM_MODEL}"
+            )
         else:
             raise ValueError(
                 "SCAN_BACKEND must be one of: "
@@ -95,11 +123,19 @@ class ScanDetector:
             self.clip_classifier = ClipCropClassifier(
                 model_name=SCAN_CLIP_MODEL,
                 labels_path=SCAN_CLIP_LABELS_PATH,
+                negative_labels=SCAN_CLIP_NEGATIVE_LABELS,
                 device=SCAN_DEVICE,
             )
 
+        if SCAN_VLM_CLASSIFICATION_ENABLED:
+            print(
+                "VLM crop classifier will load in background on first use: "
+                f"{SCAN_VLM_CLASSIFICATION_MODEL}"
+            )
+
     def detect(self, frame) -> ScanResult:
-        roi_frame, clipped_roi = crop_roi(frame, self.roi)
+        active_roi = scale_roi(self.roi, frame)
+        roi_frame, clipped_roi = crop_roi(frame, active_roi)
 
         x1, y1, _, _ = clipped_roi
 
@@ -113,18 +149,21 @@ class ScanDetector:
             result = self._detect_owlv2(
                 roi_frame=roi_frame,
                 clipped_roi=clipped_roi,
+                active_roi=active_roi,
                 start=start,
             )
         elif self.backend == "omdet_turbo":
             result = self._detect_omdet_turbo(
                 roi_frame=roi_frame,
                 clipped_roi=clipped_roi,
+                active_roi=active_roi,
                 start=start,
             )
         elif self.backend == "rt_detr_v2":
             result = self._detect_rt_detr_v2(
                 roi_frame=roi_frame,
                 clipped_roi=clipped_roi,
+                active_roi=active_roi,
                 start=start,
             )
         elif self.backend == "smolvlm":
@@ -137,12 +176,13 @@ class ScanDetector:
             result = self._detect_ultralytics(
                 roi_frame=roi_frame,
                 clipped_roi=clipped_roi,
+                active_roi=active_roi,
                 start=start,
             )
 
         return self._classify_objects(frame, result)
 
-    def _detect_ultralytics(self, roi_frame, clipped_roi, start) -> ScanResult:
+    def _detect_ultralytics(self, roi_frame, clipped_roi, active_roi, start) -> ScanResult:
         x1, y1, _, _ = clipped_roi
 
         results = self.model.track(
@@ -183,7 +223,7 @@ class ScanDetector:
                     int(by2),
                 )
 
-                if not bbox_center_in_roi(local_bbox, self.roi, x1, y1):
+                if not bbox_center_in_roi(local_bbox, active_roi, x1, y1):
                     continue
 
                 full_bbox = offset_bbox(
@@ -281,7 +321,7 @@ class ScanDetector:
 
         return "mps" if torch.backends.mps.is_available() else "cpu"
 
-    def _detect_owlv2(self, roi_frame, clipped_roi, start) -> ScanResult:
+    def _detect_owlv2(self, roi_frame, clipped_roi, active_roi, start) -> ScanResult:
         import torch
 
         x1, y1, _, _ = clipped_roi
@@ -320,7 +360,7 @@ class ScanDetector:
                 int(by2),
             )
 
-            if not bbox_center_in_roi(local_bbox, self.roi, x1, y1):
+            if not bbox_center_in_roi(local_bbox, active_roi, x1, y1):
                 continue
 
             full_bbox = offset_bbox(local_bbox, x1, y1)
@@ -345,7 +385,7 @@ class ScanDetector:
             process_ms=process_ms,
         )
 
-    def _detect_omdet_turbo(self, roi_frame, clipped_roi, start) -> ScanResult:
+    def _detect_omdet_turbo(self, roi_frame, clipped_roi, active_roi, start) -> ScanResult:
         import torch
 
         x1, y1, _, _ = clipped_roi
@@ -384,7 +424,7 @@ class ScanDetector:
                 int(by2),
             )
 
-            if not bbox_center_in_roi(local_bbox, self.roi, x1, y1):
+            if not bbox_center_in_roi(local_bbox, active_roi, x1, y1):
                 continue
 
             full_bbox = offset_bbox(local_bbox, x1, y1)
@@ -409,7 +449,7 @@ class ScanDetector:
             process_ms=process_ms,
         )
 
-    def _detect_rt_detr_v2(self, roi_frame, clipped_roi, start) -> ScanResult:
+    def _detect_rt_detr_v2(self, roi_frame, clipped_roi, active_roi, start) -> ScanResult:
         import torch
 
         x1, y1, _, _ = clipped_roi
@@ -446,7 +486,7 @@ class ScanDetector:
                 int(by2),
             )
 
-            if not bbox_center_in_roi(local_bbox, self.roi, x1, y1):
+            if not bbox_center_in_roi(local_bbox, active_roi, x1, y1):
                 continue
 
             full_bbox = offset_bbox(local_bbox, x1, y1)
@@ -473,6 +513,13 @@ class ScanDetector:
 
     def _detect_smolvlm(self, roi_frame, clipped_roi, start) -> ScanResult:
         import torch
+
+        if self.model is None or self.processor is None:
+            self._ensure_smolvlm_loading()
+            return ScanResult(
+                objects=list(self._smolvlm_cached_objects),
+                process_ms=int((time.time() - start) * 1000),
+            )
 
         now = time.monotonic()
         if now - self._smolvlm_last_at < SCAN_SMOLVLM_INTERVAL_SECONDS:
@@ -522,46 +569,211 @@ class ScanDetector:
 
         return ScanResult(objects=objects, process_ms=process_ms)
 
+    def _ensure_smolvlm_loading(self) -> None:
+        if self._smolvlm_load_failed or self._smolvlm_loading:
+            return
+
+        with self._smolvlm_lock:
+            if (
+                self.model is not None
+                or self._smolvlm_loading
+                or self._smolvlm_load_failed
+            ):
+                return
+            self._smolvlm_loading = True
+
+        thread = threading.Thread(
+            target=self._load_smolvlm_worker,
+            name="smolvlm-loader",
+            daemon=True,
+        )
+        thread.start()
+
+    def _load_smolvlm_worker(self) -> None:
+        try:
+            self._load_smolvlm()
+        except Exception as error:
+            with self._smolvlm_lock:
+                self._smolvlm_load_failed = True
+                self._smolvlm_loading = False
+            print(f"SmolVLM detector disabled: cannot load {SCAN_SMOLVLM_MODEL}: {error}")
+            return
+
+        with self._smolvlm_lock:
+            self._smolvlm_loading = False
+        print(f"SmolVLM detector loaded: {SCAN_SMOLVLM_MODEL}")
+
     def _classify_objects(self, frame, result: ScanResult) -> ScanResult:
-        if self.clip_classifier is None or not result.objects:
-            return result
+        if not result.objects:
+            return ScanResult(
+                objects=self._limit_single_instance_classes(result.objects),
+                process_ms=result.process_ms,
+            )
 
         classified = []
+        vlm_used = 0
         for obj in result.objects:
             classification = self._classify_object(frame, obj)
-            if (
-                classification is not None
-                and classification.confidence >= SCAN_CLIP_MIN_CONFIDENCE
-            ):
-                classified.append(Detection(
-                    class_name=classification.label,
-                    confidence=obj.confidence,
-                    bbox=obj.bbox,
-                    roi_name=obj.roi_name,
-                    track_id=obj.track_id,
-                    polygon=obj.polygon,
-                ))
-            else:
-                classified.append(obj)
+            clip_detection = self._detection_from_classification(obj, classification)
+            if self._is_vlm_excluded(obj, clip_detection):
+                classified.append(clip_detection or obj)
+                continue
 
-        return ScanResult(objects=classified, process_ms=result.process_ms)
+            if clip_detection is not None and not (
+                SCAN_VLM_CLASSIFICATION_ENABLED
+                and self._should_use_vlm(classification)
+            ):
+                classified.append(clip_detection)
+            else:
+                vlm_classification = None
+                if vlm_used < SCAN_VLM_CLASSIFICATION_MAX_OBJECTS:
+                    vlm_classification = self._classify_object_with_vlm(
+                        frame=frame,
+                        obj=obj,
+                    )
+                    if vlm_classification is not None:
+                        vlm_used += 1
+
+                if vlm_classification is not None and vlm_classification.label != "background":
+                    classified.append(
+                        self._detection_with_class_name(obj, vlm_classification.label)
+                    )
+                elif clip_detection is not None:
+                    classified.append(clip_detection)
+                else:
+                    classified.append(obj)
+
+        return ScanResult(
+            objects=self._limit_single_instance_classes(classified),
+            process_ms=result.process_ms,
+        )
 
     def _classify_object(self, frame, obj):
+        if self.clip_classifier is None:
+            return None
+
         key = self._clip_key(obj)
         cached = self._clip_cache.get(key)
         if cached is not None:
             return cached
 
+        crop = self._object_crop(frame, obj)
+        classification = self.clip_classifier.classify(crop)
+        self._clip_cache[key] = classification
+        return classification
+
+    def _classify_object_with_vlm(self, frame, obj):
+        if not SCAN_VLM_CLASSIFICATION_ENABLED:
+            return None
+
+        if self.vlm_classifier is None:
+            self._ensure_vlm_classifier_loading()
+            return None
+
+        key = self._clip_key(obj)
+        cached = self._vlm_cache.get(key)
+        if cached is not None:
+            return cached
+
+        crop = self._object_crop(frame, obj)
+        classification = self.vlm_classifier.classify(crop, cache_key=key)
+        self._vlm_cache[key] = classification
+        return classification
+
+    @classmethod
+    def _detection_from_classification(cls, obj, classification):
+        if (
+            classification is None
+            or classification.is_negative
+            or classification.confidence < SCAN_CLIP_MIN_CONFIDENCE
+        ):
+            return None
+
+        return cls._detection_with_class_name(obj, classification.label)
+
+    @staticmethod
+    def _detection_with_class_name(obj, class_name):
+        return Detection(
+            class_name=class_name,
+            confidence=obj.confidence,
+            bbox=obj.bbox,
+            roi_name=obj.roi_name,
+            track_id=obj.track_id,
+            polygon=obj.polygon,
+        )
+
+    @classmethod
+    def _is_vlm_excluded(cls, obj, clip_detection):
+        class_names = [obj.class_name]
+        if clip_detection is not None:
+            class_names.append(clip_detection.class_name)
+
+        return any(
+            cls._normalized_class_name(class_name) in SINGLE_INSTANCE_CLASSES
+            for class_name in class_names
+        )
+
+    def _ensure_vlm_classifier_loading(self) -> None:
+        if self._vlm_load_failed or self._vlm_loading:
+            return
+
+        with self._vlm_lock:
+            if (
+                self.vlm_classifier is not None
+                or self._vlm_loading
+                or self._vlm_load_failed
+            ):
+                return
+            self._vlm_loading = True
+
+        thread = threading.Thread(
+            target=self._load_vlm_classifier_worker,
+            name="vlm-crop-loader",
+            daemon=True,
+        )
+        thread.start()
+
+    def _load_vlm_classifier_worker(self) -> None:
+        try:
+            classifier = VlmCropClassifier(
+                model_name=SCAN_VLM_CLASSIFICATION_MODEL,
+                prompt=SCAN_VLM_CLASSIFICATION_PROMPT,
+                device=SCAN_DEVICE,
+                interval_seconds=SCAN_VLM_CLASSIFICATION_INTERVAL_SECONDS,
+                local_files_only=SCAN_VLM_CLASSIFICATION_LOCAL_FILES_ONLY,
+            )
+        except Exception as error:
+            with self._vlm_lock:
+                self._vlm_load_failed = True
+                self._vlm_loading = False
+            print(
+                "VLM crop classifier disabled: "
+                f"cannot load {SCAN_VLM_CLASSIFICATION_MODEL}: {error}"
+            )
+            return
+
+        with self._vlm_lock:
+            self.vlm_classifier = classifier
+            self._vlm_loading = False
+        print(f"VLM crop classifier loaded: {SCAN_VLM_CLASSIFICATION_MODEL}")
+
+    @staticmethod
+    def _should_use_vlm(classification):
+        if SCAN_VLM_CLASSIFICATION_MODE == "all":
+            return True
+        if classification.is_negative:
+            return True
+        return classification.confidence < SCAN_VLM_CLASSIFICATION_MIN_CLIP_CONFIDENCE
+
+    @staticmethod
+    def _object_crop(frame, obj):
         height, width = frame.shape[:2]
         x1, y1, x2, y2 = obj.bbox
         x1 = max(0, min(width, x1))
         x2 = max(0, min(width, x2))
         y1 = max(0, min(height, y1))
         y2 = max(0, min(height, y2))
-        crop = frame[y1:y2, x1:x2]
-        classification = self.clip_classifier.classify(crop)
-        self._clip_cache[key] = classification
-        return classification
+        return frame[y1:y2, x1:x2]
 
     @staticmethod
     def _clip_key(obj):
@@ -588,6 +800,53 @@ class ScanDetector:
             kept.append(obj)
 
         return kept
+
+    @classmethod
+    def _limit_single_instance_classes(cls, objects):
+        best_by_class = {}
+        filtered = []
+
+        for obj in objects:
+            normalized_class = cls._normalized_class_name(obj.class_name)
+            if normalized_class not in SINGLE_INSTANCE_CLASSES:
+                filtered.append(cls._avoid_reserved_track_id(obj))
+                continue
+
+            current = best_by_class.get(normalized_class)
+            if current is None or obj.confidence > current.confidence:
+                best_by_class[normalized_class] = cls._with_single_instance_track_id(obj)
+
+        filtered.extend(best_by_class.values())
+        return filtered
+
+    @staticmethod
+    def _with_single_instance_track_id(obj):
+        return Detection(
+            class_name=obj.class_name,
+            confidence=obj.confidence,
+            bbox=obj.bbox,
+            roi_name=obj.roi_name,
+            track_id=SCANNER_TRACK_ID,
+            polygon=obj.polygon,
+        )
+
+    @staticmethod
+    def _avoid_reserved_track_id(obj):
+        if obj.track_id != SCANNER_TRACK_ID:
+            return obj
+
+        return Detection(
+            class_name=obj.class_name,
+            confidence=obj.confidence,
+            bbox=obj.bbox,
+            roi_name=obj.roi_name,
+            track_id=obj.track_id + RESERVED_TRACK_ID_OFFSET,
+            polygon=obj.polygon,
+        )
+
+    @staticmethod
+    def _normalized_class_name(class_name):
+        return str(class_name).strip().lower().replace(" ", "_")
 
     @classmethod
     def _dedupe_rank(cls, detection):

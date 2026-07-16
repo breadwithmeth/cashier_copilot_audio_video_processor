@@ -1,23 +1,22 @@
 bottle
-carton
-can
-jar
-box
-tray
-container
-pouch
-package
-tube
-bag
-cup
-fruit
-vegetable
+milk carton
+tin can
+glass jar
+cardboard box
+plastic food tray
+plastic container
+plastic pouch
+vacuum sealed package
+paste tube
+plastic shopping bag
+paper cup
+fresh produce
 bread
 eggs
-scanner
-terminal
-receipt
-card
-money
+barcode scanner
+payment terminal
+paper receipt
+credit card
+banknote
 passport
 cigarette

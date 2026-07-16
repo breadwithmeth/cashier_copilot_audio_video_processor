@@ -194,7 +194,7 @@ class Overlay:
 
             cv2.putText(
                 image,
-                f"{label} {person.confidence:.2f}",
+                self._person_label(label, person),
                 (x1, max(25, y1 - 8)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,
@@ -203,6 +203,16 @@ class Overlay:
             )
 
             self._draw_hands(image, person)
+
+    @staticmethod
+    def _person_label(label, person):
+        parts = [label]
+        if person.track_id is not None:
+            parts.append(f"ID {person.track_id}")
+        if person.action:
+            parts.append(person.action)
+        parts.append(f"{person.confidence:.2f}")
+        return " ".join(parts)
 
     def _draw_top_info(self, image, state, scan_result, person_result):
         customer_text = "CUSTOMER: YES" if state.customer_is_present else "CUSTOMER: NO"

@@ -6,9 +6,46 @@ def is_rectangle_roi(roi):
     return len(roi) == 4 and all(isinstance(value, (int, float)) for value in roi)
 
 
-def roi_bounds(roi):
+def is_normalized_roi(roi):
+    if is_rectangle_roi(roi):
+        values = roi
+    else:
+        values = [coordinate for point in roi for coordinate in point[:2]]
+
+    return bool(values) and all(0 <= float(value) <= 1 for value in values)
+
+
+def scale_roi(roi, frame):
+    if not is_normalized_roi(roi):
+        return roi
+
+    h, w = frame.shape[:2]
     if is_rectangle_roi(roi):
         x1, y1, x2, y2 = roi
+        return (
+            int(round(float(x1) * w)),
+            int(round(float(y1) * h)),
+            int(round(float(x2) * w)),
+            int(round(float(y2) * h)),
+        )
+
+    return tuple(
+        (
+            int(round(float(point[0]) * w)),
+            int(round(float(point[1]) * h)),
+        )
+        for point in roi
+    )
+
+
+def roi_bounds(roi, frame=None):
+    if frame is not None:
+        roi = scale_roi(roi, frame)
+
+    if is_rectangle_roi(roi):
+        x1, y1, x2, y2 = roi
+        if is_normalized_roi(roi):
+            return float(x1), float(y1), float(x2), float(y2)
         return int(x1), int(y1), int(x2), int(y2)
 
     if len(roi) < 3:
@@ -16,10 +53,13 @@ def roi_bounds(roi):
 
     xs = [point[0] for point in roi]
     ys = [point[1] for point in roi]
+    if is_normalized_roi(roi):
+        return float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))
     return int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))
 
 
 def clip_roi(roi, frame):
+    roi = scale_roi(roi, frame)
     x1, y1, x2, y2 = roi_bounds(roi)
     h, w = frame.shape[:2]
 
@@ -32,6 +72,7 @@ def clip_roi(roi, frame):
 
 
 def crop_roi(frame, roi):
+    roi = scale_roi(roi, frame)
     x1, y1, x2, y2 = clip_roi(roi, frame)
     roi_frame = frame[y1:y2, x1:x2]
 
