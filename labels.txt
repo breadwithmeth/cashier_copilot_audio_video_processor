@@ -1,6 +1,7 @@
 bottle
 milk carton
 tin can
+energy drink can
 glass jar
 cardboard box
 plastic food tray
@@ -20,3 +21,4 @@ credit card
 banknote
 passport
 cigarette
+cigarette pack

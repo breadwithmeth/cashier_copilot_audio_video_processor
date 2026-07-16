@@ -36,6 +36,7 @@ SCAN_WORLD_PROMPTS = [
     "bottle",
     "milk carton",
     "tin can",
+    "energy drink can",
     "glass jar",
     "cardboard box",
     "plastic food tray",
@@ -62,6 +63,7 @@ SCAN_OWLV2_CLASSES = [
     {"label": "bottle", "prompt": "plastic bottle or glass drink bottle"},
     {"label": "milk_carton", "prompt": "milk carton or juice carton"},
     {"label": "tin_can", "prompt": "tin can or aluminum drink can"},
+    {"label": "energy_drink_can", "prompt": "energy drink can or aluminum beverage can"},
     {"label": "glass_jar", "prompt": "glass jar with food or drink"},
     {"label": "cardboard_box", "prompt": "cardboard product box"},
     {"label": "plastic_food_tray", "prompt": "plastic food tray"},
@@ -88,6 +90,7 @@ SCAN_OMDET_CLASSES = [
     {"label": "bottle", "prompt": "plastic bottle or glass drink bottle"},
     {"label": "milk_carton", "prompt": "milk carton or juice carton"},
     {"label": "tin_can", "prompt": "tin can or aluminum drink can"},
+    {"label": "energy_drink_can", "prompt": "energy drink can or aluminum beverage can"},
     {"label": "glass_jar", "prompt": "glass jar with food or drink"},
     {"label": "cardboard_box", "prompt": "cardboard product box"},
     {"label": "plastic_food_tray", "prompt": "plastic food tray"},
@@ -112,40 +115,11 @@ SCAN_OMDET_PROMPTS = [item["prompt"] for item in SCAN_OMDET_CLASSES]
 SCAN_SMOLVLM_MODEL = "HuggingFaceTB/SmolVLM-500M-Instruct"
 SCAN_RT_DETR_V2_MODEL = "nielsr/rtdetr-tray-cart-tuned-strong-20260303-204722"
 SCAN_SMOLVLM_INTERVAL_SECONDS = 2.0
-SCAN_SMOLVLM_PROMPTS = [
-    "bottle",
-    "milk_carton",
-    "tin_can",
-    "glass_jar",
-    "cardboard_box",
-    "plastic_food_tray",
-    "plastic_container",
-    "plastic_pouch",
-    "vacuum_sealed_package",
-    "paste_tube",
-    "plastic_shopping_bag",
-    "paper_cup",
-    "fresh_produce",
-    "bread",
-    "eggs",
-    "barcode_scanner",
-    "payment_terminal",
-    "paper_receipt",
-    "credit_card",
-    "banknote",
-    "passport",
-    "cigarette",
-]
 SCAN_SMOLVLM_PROMPT = (
-    "Look at the cashier scan area image. Identify only visible retail objects "
-    "from this allowed list: bottle, milk_carton, tin_can, glass_jar, "
-    "cardboard_box, plastic_food_tray, plastic_container, plastic_pouch, "
-    "vacuum_sealed_package, paste_tube, plastic_shopping_bag, paper_cup, "
-    "fresh_produce, bread, eggs, barcode_scanner, payment_terminal, "
-    "paper_receipt, credit_card, banknote, passport, cigarette. Return only "
-    "a JSON array of unique labels from the allowed list, for example "
-    "[\"bottle\", \"milk_carton\"]. "
-    "If none are visible, return []."
+    "Look at the cashier scan area image. Describe each visible retail product "
+    "or merchandise item in 1-3 words (e.g., 'energy drink can', 'milk carton', "
+    "'cigarette pack', 'plastic bottle', 'bread loaf', 'shopping bag'). "
+    "Return a JSON array of descriptions. If none are visible, return []."
 )
 POSE_MODEL_PATH = "yolo11n-pose.pt"
 
@@ -171,6 +145,9 @@ SCAN_CLIP_NEGATIVE_LABELS = [
     "printed sign",
     "store sign",
     "poster",
+    "hand",
+    "fingers",
+    "background",
 ]
 SCAN_VLM_CLASSIFICATION_ENABLED = True
 SCAN_VLM_CLASSIFICATION_MODEL = "Qwen/Qwen2-VL-2B-Instruct"
@@ -180,10 +157,10 @@ SCAN_VLM_CLASSIFICATION_MIN_CLIP_CONFIDENCE = 0.12
 SCAN_VLM_CLASSIFICATION_INTERVAL_SECONDS = 2.0
 SCAN_VLM_CLASSIFICATION_MAX_OBJECTS = 4
 SCAN_VLM_CLASSIFICATION_PROMPT = (
-    "Identify the main visible object in this crop from a checkout camera. "
-    "Return only one short English product or object label in snake_case. "
-    "Do not explain. If it is only a price tag, sticker, poster, shelf label, "
-    "background, hand, or unreadable fragment, return background."
+    "Look at this crop from a checkout camera. Describe the main visible retail product "
+    "or merchandise item in 1-3 words (e.g., 'energy drink can', 'milk carton', 'cigarette pack', "
+    "'plastic bottle', 'bread loaf', 'shopping bag'). If only price tags, stickers, posters, "
+    "shelf labels, hands, background, or unreadable fragments are visible, return 'background'."
 )
 
 # Full HD inference resolution (height, width).

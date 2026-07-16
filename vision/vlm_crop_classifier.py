@@ -101,9 +101,14 @@ class VlmCropClassifier:
     @staticmethod
     def _normalize_label(text: str) -> str:
         text = text.strip().splitlines()[0].strip().lower()
+        # Keep up to 3 words, remove special chars except spaces and hyphens
         text = re.sub(r"[^a-z0-9_\-\s]+", "", text)
         text = re.sub(r"[\s\-]+", "_", text)
         text = re.sub(r"_+", "_", text).strip("_")
+        # Limit to ~3 words (max ~64 chars)
+        words = text.split("_")
+        if len(words) > 3:
+            text = "_".join(words[:3])
         return text[:64]
 
     @staticmethod

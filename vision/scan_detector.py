@@ -41,7 +41,6 @@ from config import (
     SCAN_SMOLVLM_INTERVAL_SECONDS,
     SCAN_SMOLVLM_MODEL,
     SCAN_SMOLVLM_PROMPT,
-    SCAN_SMOLVLM_PROMPTS,
 )
 
 from models.detection import Detection, ScanResult
@@ -893,7 +892,6 @@ class ScanDetector:
 
     @staticmethod
     def _parse_smolvlm_labels(text):
-        allowed = {label.lower(): label for label in SCAN_SMOLVLM_PROMPTS}
         labels = []
 
         try:
@@ -905,15 +903,11 @@ class ScanDetector:
                 candidates = []
         except (json.JSONDecodeError, TypeError):
             lowered = text.lower()
-            candidates = [
-                label
-                for label in SCAN_SMOLVLM_PROMPTS
-                if label.lower() in lowered
-            ]
+            # Fallback: split by common separators
+            candidates = [c.strip() for c in re.split(r"[,\n;]", text) if c.strip()]
 
         for candidate in candidates:
-            key = str(candidate).strip().lower().replace("_", " ")
-            label = allowed.get(key)
+            label = str(candidate).strip().lower()
             if label and label not in labels:
                 labels.append(label)
 
