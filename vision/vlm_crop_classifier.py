@@ -101,15 +101,43 @@ class VlmCropClassifier:
     @staticmethod
     def _normalize_label(text: str) -> str:
         text = text.strip().splitlines()[0].strip().lower()
-        # Keep up to 3 words, remove special chars except spaces and hyphens
-        text = re.sub(r"[^a-z0-9_\-\s]+", "", text)
-        text = re.sub(r"[\s\-]+", "_", text)
-        text = re.sub(r"_+", "_", text).strip("_")
+        
+        # Extract product name from common sentence patterns
+        # e.g., "The visible retail product is a milk carton." -> "milk_carton"
+        # e.g., "The main visible retail product is a glass_bottle." -> "glass_bottle"
+        # e.g., "A milk carton is visible." -> "milk_carton"
+        patterns = [
+            r"is\s+a\s+([a-z0-9_\-\s]+)[\.\!\s]*$",
+            r"is\s+an\s+([a-z0-9_\-\s]+)[\.\!\s]*$",
+            r"product\s+is\s+([a-z0-9_\-\s]+)[\.\!\s]*$",
+            r"item\s+is\s+([a-z0-9_\-\s]+)[\.\!\s]*$",
+            r"visible\s+(?:retail\s+)?product\s+is\s+([a-z0-9_\-\s]+)[\.\!\s]*$",
+            r"main\s+visible\s+(?:retail\s+)?product\s+is\s+([a-z0-9_\-\s]+)[\.\!\s]*$",
+            r"^([a-z0-9_\-\s]+)[\.\!\s]*$",  # fallback: just the text
+        ]
+        
+        extracted = None
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                extracted = match.group(1).strip()
+                break
+        
+        if extracted is None:
+            extracted = text
+        
+        # Clean up: keep alphanumeric, spaces, hyphens, underscores
+        extracted = re.sub(r"[^a-z0-9_\-\s]+", "", extracted)
+        # Replace spaces/hyphens with underscores
+        extracted = re.sub(r"[\s\-]+", "_", extracted)
+        extracted = re.sub(r"_+", "_", extracted).strip("_")
+        
         # Limit to ~3 words (max ~64 chars)
-        words = text.split("_")
+        words = extracted.split("_")
         if len(words) > 3:
-            text = "_".join(words[:3])
-        return text[:64]
+            extracted = "_".join(words[:3])
+        
+        return extracted[:64]
 
     @staticmethod
     def _torch_device(torch, device: str) -> str:

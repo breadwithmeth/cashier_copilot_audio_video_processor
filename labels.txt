@@ -1,24 +1,44 @@
-bottle
-milk carton
-tin can
-energy drink can
-glass jar
-cardboard box
-plastic food tray
-plastic container
-plastic pouch
-vacuum sealed package
-paste tube
-plastic shopping bag
-paper cup
-fresh produce
-bread
-eggs
-barcode scanner
-payment terminal
-paper receipt
-credit card
+water_bottle
+soda_bottle
+juice_carton
+milk_carton
+glass_bottle
+wine_bottle
+beer_can
+tin_can
+glass_jar
+cardboard_box
+cereal_box
+pizza_box
+egg_carton
+plastic_pouch
+plastic_food_tray
+vacuum_sealed_package
+takeaway_container
+paste_tube
+shampoo_bottle
+detergent_bottle
+plastic_shopping_bag
+paper_bag
+candy_wrapper
+shrink_wrap
+fresh_produce
+bread_loaf
+meat_tray
+snack_bag
+coffee_jar
+yogurt_cup
+butter_pack
+ice_cream_tub
+toilet_paper_pack
+diaper_pack
+shopping_basket
+barcode_scanner
+payment_terminal
+paper_receipt
+credit_card
 banknote
 passport
-cigarette
-cigarette pack
+cigarette_pack
+tri_groove_bolt
+anti_vandal_bolt
