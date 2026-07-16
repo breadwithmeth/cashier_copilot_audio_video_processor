@@ -216,14 +216,13 @@ SPEECH_RECOGNITION_ENABLED = True
 SPEECH_RECOGNITION_ENABLED = False
 ```
 
-Параметры backend можно переопределять через окружение:
+Параметры backend задаются в `config.py`:
 
-```bash
-export WHISPER_BACKEND=gigaam
-export GIGAAM_MODEL=v3_e2e_rnnt
-export GIGAAM_DEVICE=auto
-export WHISPER_LANGUAGE=ru
-export TRANSCRIPTS_DIR=transcripts
+```python
+WHISPER_BACKEND = "faster-whisper" if sys.platform == "win32" else "gigaam"
+WHISPER_MODEL = "large-v3-turbo" if sys.platform == "win32" else "mlx-community/whisper-large-v3-turbo-q4"
+WHISPER_LANGUAGE = "ru"
+TRANSCRIPTS_DIR = Path("transcripts")
 ```
 
 Backend:
@@ -235,9 +234,11 @@ Backend:
 
 Для Faster Whisper:
 
-```bash
-export WHISPER_COMPUTE_TYPE=int8
+```python
+WHISPER_COMPUTE_TYPE = "int8"
 ```
+
+На Windows используется `faster-whisper`. Нужен установленный FFmpeg в `PATH`; WAV и JSON транскрипта сохраняются в `TRANSCRIPTS_DIR`.
 
 ### Чек-лист обслуживания
 

@@ -20,7 +20,7 @@ CAMERA_NAME = "Checkout camera"
 # - "owlv2": prompt-based OWLv2 from SCAN_OWLV2_MODEL
 # - "omdet_turbo": prompt-based OmDet-Turbo from SCAN_OMDET_MODEL
 # - "smolvlm": image-to-text VLM labeler, no real bbox output
-SCAN_BACKEND = "yolo_world"
+SCAN_BACKEND = "yolo"
 SCAN_DEVICE = "auto"
 
 # SCAN_MODEL_PATH = Path("runs/dataset1_detector/dataset1_640/weights/best.pt")
@@ -28,8 +28,8 @@ SCAN_DEVICE = "auto"
 
 # YOLO-World fallback. Uncomment both lines below to switch from the trained
 # dataset1 detector back to prompt-based open-vocabulary detection.
-SCAN_MODEL_PATH = Path("weights/yolov8m-worldv2.pt")
-# SCAN_MODEL_PATH = Path("runs/dataset1507_detector/dataset1507_mps/weights/best.pt")
+#SCAN_MODEL_PATH = Path("weights/yolov8m-worldv2.pt")
+SCAN_MODEL_PATH = Path("weights/yolov26_product_detection_v2_best.pt")
 # SCAN_WORLD_PROMPTS = ["bottle", "can", "tetra_pak", "pouch", "food", "cigarettes", "receipt", "barcode_scanner", "id_card", "phone", "shopping_bag", "bank_card", "business_card", "basket"]
 
 SCAN_WORLD_PROMPTS = [
@@ -110,6 +110,7 @@ SCAN_OMDET_CLASSES = [
 ]
 SCAN_OMDET_PROMPTS = [item["prompt"] for item in SCAN_OMDET_CLASSES]
 SCAN_SMOLVLM_MODEL = "HuggingFaceTB/SmolVLM-500M-Instruct"
+SCAN_RT_DETR_V2_MODEL = "nielsr/rtdetr-tray-cart-tuned-strong-20260303-204722"
 SCAN_SMOLVLM_INTERVAL_SECONDS = 2.0
 SCAN_SMOLVLM_PROMPTS = [
     "bottle",
@@ -155,6 +156,10 @@ VIDEO_ANALYTICS_ENABLED = True
 SCAN_CONFIDENCE = 0.2
 PERSON_CONFIDENCE = 0.4
 POSE_KEYPOINT_CONFIDENCE = 0.3
+SCAN_CLIP_CLASSIFICATION_ENABLED = True
+SCAN_CLIP_MODEL = "openai/clip-vit-base-patch32"
+SCAN_CLIP_LABELS_PATH = Path("labels.txt")
+SCAN_CLIP_MIN_CONFIDENCE = 0.0
 
 # Full HD inference resolution (height, width).
 SCAN_IMAGE_SIZE = (1088, 1920)

@@ -16,6 +16,10 @@ from config import (
     SCAN_MODEL_PATH,
     SCAN_CONFIDENCE,
     SCAN_IMAGE_SIZE,
+    SCAN_CLIP_CLASSIFICATION_ENABLED,
+    SCAN_CLIP_LABELS_PATH,
+    SCAN_CLIP_MIN_CONFIDENCE,
+    SCAN_CLIP_MODEL,
     SCAN_WORLD_PROMPTS,
     SCAN_OWLV2_MODEL,
     SCAN_OWLV2_CLASSES,
@@ -23,6 +27,7 @@ from config import (
     SCAN_OMDET_MODEL,
     SCAN_OMDET_CLASSES,
     SCAN_OMDET_PROMPTS,
+    SCAN_RT_DETR_V2_MODEL,
     SCAN_SMOLVLM_INTERVAL_SECONDS,
     SCAN_SMOLVLM_MODEL,
     SCAN_SMOLVLM_PROMPT,
@@ -30,6 +35,7 @@ from config import (
 )
 
 from models.detection import Detection, ScanResult
+from vision.clip_classifier import ClipCropClassifier
 from vision.roi import bbox_center_in_roi, crop_roi, offset_bbox
 
 
@@ -60,6 +66,8 @@ class ScanDetector:
         self.model = None
         self.processor = None
         self.device = None
+        self.clip_classifier = None
+        self._clip_cache = {}
         self._smolvlm_last_at = 0.0
         self._smolvlm_cached_objects = []
 
@@ -73,12 +81,21 @@ class ScanDetector:
             self._load_owlv2()
         elif self.backend == "omdet_turbo":
             self._load_omdet_turbo()
+        elif self.backend == "rt_detr_v2":
+            self._load_rt_detr_v2()
         elif self.backend == "smolvlm":
             self._load_smolvlm()
         else:
             raise ValueError(
                 "SCAN_BACKEND must be one of: "
-                "yolo, yolo_world, owlv2, omdet_turbo, smolvlm"
+                "yolo, yolo_world, owlv2, omdet_turbo, rt_detr_v2, smolvlm"
+            )
+
+        if SCAN_CLIP_CLASSIFICATION_ENABLED:
+            self.clip_classifier = ClipCropClassifier(
+                model_name=SCAN_CLIP_MODEL,
+                labels_path=SCAN_CLIP_LABELS_PATH,
+                device=SCAN_DEVICE,
             )
 
     def detect(self, frame) -> ScanResult:
@@ -90,31 +107,40 @@ class ScanDetector:
             return ScanResult(objects=[], process_ms=0)
 
         start = time.time()
+        result = None
 
         if self.backend == "owlv2":
-            return self._detect_owlv2(
+            result = self._detect_owlv2(
                 roi_frame=roi_frame,
                 clipped_roi=clipped_roi,
                 start=start,
             )
-        if self.backend == "omdet_turbo":
-            return self._detect_omdet_turbo(
+        elif self.backend == "omdet_turbo":
+            result = self._detect_omdet_turbo(
                 roi_frame=roi_frame,
                 clipped_roi=clipped_roi,
                 start=start,
             )
-        if self.backend == "smolvlm":
-            return self._detect_smolvlm(
+        elif self.backend == "rt_detr_v2":
+            result = self._detect_rt_detr_v2(
+                roi_frame=roi_frame,
+                clipped_roi=clipped_roi,
+                start=start,
+            )
+        elif self.backend == "smolvlm":
+            result = self._detect_smolvlm(
+                roi_frame=roi_frame,
+                clipped_roi=clipped_roi,
+                start=start,
+            )
+        else:
+            result = self._detect_ultralytics(
                 roi_frame=roi_frame,
                 clipped_roi=clipped_roi,
                 start=start,
             )
 
-        return self._detect_ultralytics(
-            roi_frame=roi_frame,
-            clipped_roi=clipped_roi,
-            start=start,
-        )
+        return self._classify_objects(frame, result)
 
     def _detect_ultralytics(self, roi_frame, clipped_roi, start) -> ScanResult:
         x1, y1, _, _ = clipped_roi
@@ -208,6 +234,32 @@ class ScanDetector:
         self.model = OmDetTurboForObjectDetection.from_pretrained(
             SCAN_OMDET_MODEL
         ).to(self.device).eval()
+
+    def _load_rt_detr_v2(self) -> None:
+        import torch
+        from transformers import (
+            AutoImageProcessor,
+            AutoModelForObjectDetection,
+            RTDetrImageProcessor,
+        )
+
+        self.device = self._torch_device(torch)
+        try:
+            self.processor = AutoImageProcessor.from_pretrained(SCAN_RT_DETR_V2_MODEL)
+        except OSError:
+            # Some community checkpoints do not ship preprocessor_config.json.
+            # RT-DETR defaults match the common 640x640 resize/rescale pipeline.
+            self.processor = RTDetrImageProcessor()
+        try:
+            self.model = AutoModelForObjectDetection.from_pretrained(
+                SCAN_RT_DETR_V2_MODEL
+            ).to(self.device).eval()
+        except OSError as error:
+            raise RuntimeError(
+                f"Cannot load RT-DETR v2 model {SCAN_RT_DETR_V2_MODEL!r}. "
+                "The Hugging Face repository must contain standard Transformers "
+                "weights such as model.safetensors or pytorch_model.bin."
+            ) from error
 
     def _load_smolvlm(self) -> None:
         import torch
@@ -357,6 +409,68 @@ class ScanDetector:
             process_ms=process_ms,
         )
 
+    def _detect_rt_detr_v2(self, roi_frame, clipped_roi, start) -> ScanResult:
+        import torch
+
+        x1, y1, _, _ = clipped_roi
+        image = Image.fromarray(cv2.cvtColor(roi_frame, cv2.COLOR_BGR2RGB))
+        inputs = self.processor(
+            images=image,
+            return_tensors="pt",
+        ).to(self.device)
+
+        with torch.inference_mode():
+            outputs = self.model(**inputs)
+
+        target_sizes = torch.tensor(
+            [image.size[::-1]],
+            device=self.device,
+        )
+        results = self.processor.post_process_object_detection(
+            outputs=outputs,
+            target_sizes=target_sizes,
+            threshold=SCAN_CONFIDENCE,
+        )[0]
+
+        objects = []
+        for box, score, label in zip(
+            results["boxes"],
+            results["scores"],
+            results["labels"],
+        ):
+            bx1, by1, bx2, by2 = box.tolist()
+            local_bbox = (
+                int(bx1),
+                int(by1),
+                int(bx2),
+                int(by2),
+            )
+
+            if not bbox_center_in_roi(local_bbox, self.roi, x1, y1):
+                continue
+
+            full_bbox = offset_bbox(local_bbox, x1, y1)
+            class_name = self._model_label(int(label.item()))
+            polygon = self._bbox_polygon(local_bbox, x1, y1)
+
+            objects.append(
+                Detection(
+                    class_name=class_name,
+                    confidence=float(score.item()),
+                    bbox=full_bbox,
+                    roi_name="scan_zone",
+                    track_id=None,
+                    polygon=polygon,
+                )
+            )
+
+        process_ms = int((time.time() - start) * 1000)
+
+        return ScanResult(
+            objects=self._deduplicate_objects(objects),
+            process_ms=process_ms,
+        )
+
     def _detect_smolvlm(self, roi_frame, clipped_roi, start) -> ScanResult:
         import torch
 
@@ -407,6 +521,58 @@ class ScanDetector:
         process_ms = int((time.time() - start) * 1000)
 
         return ScanResult(objects=objects, process_ms=process_ms)
+
+    def _classify_objects(self, frame, result: ScanResult) -> ScanResult:
+        if self.clip_classifier is None or not result.objects:
+            return result
+
+        classified = []
+        for obj in result.objects:
+            classification = self._classify_object(frame, obj)
+            if (
+                classification is not None
+                and classification.confidence >= SCAN_CLIP_MIN_CONFIDENCE
+            ):
+                classified.append(Detection(
+                    class_name=classification.label,
+                    confidence=obj.confidence,
+                    bbox=obj.bbox,
+                    roi_name=obj.roi_name,
+                    track_id=obj.track_id,
+                    polygon=obj.polygon,
+                ))
+            else:
+                classified.append(obj)
+
+        return ScanResult(objects=classified, process_ms=result.process_ms)
+
+    def _classify_object(self, frame, obj):
+        key = self._clip_key(obj)
+        cached = self._clip_cache.get(key)
+        if cached is not None:
+            return cached
+
+        height, width = frame.shape[:2]
+        x1, y1, x2, y2 = obj.bbox
+        x1 = max(0, min(width, x1))
+        x2 = max(0, min(width, x2))
+        y1 = max(0, min(height, y1))
+        y2 = max(0, min(height, y2))
+        crop = frame[y1:y2, x1:x2]
+        classification = self.clip_classifier.classify(crop)
+        self._clip_cache[key] = classification
+        return classification
+
+    @staticmethod
+    def _clip_key(obj):
+        if obj.track_id is not None:
+            return f"id:{obj.track_id}"
+        x1, y1, x2, y2 = obj.bbox
+        return (
+            f"{obj.class_name}:"
+            f"{int(((x1 + x2) / 2) // 40)}:"
+            f"{int(((y1 + y2) / 2) // 40)}"
+        )
 
     @classmethod
     def _deduplicate_objects(cls, objects):
@@ -460,6 +626,11 @@ class ScanDetector:
                 return item["label"].replace(" ", "_")
 
         return label_text.replace(" ", "_")
+
+    def _model_label(self, label_id):
+        id2label = getattr(self.model.config, "id2label", {})
+        label = id2label.get(label_id, str(label_id))
+        return str(label).strip().lower().replace(" ", "_")
 
     @staticmethod
     def _parse_smolvlm_labels(text):
