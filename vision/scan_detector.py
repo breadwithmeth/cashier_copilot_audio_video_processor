@@ -45,7 +45,7 @@ from config import (
 
 from models.detection import Detection, ScanResult
 from vision.clip_classifier import ClipCropClassifier
-from vision.roi import bbox_center_in_roi, crop_roi, offset_bbox, scale_roi
+from vision.roi import bbox_center_in_roi, crop_roi, expand_roi, offset_bbox, scale_roi
 from vision.vlm_crop_classifier import VlmCropClassifier
 
 
@@ -134,7 +134,11 @@ class ScanDetector:
 
     def detect(self, frame) -> ScanResult:
         active_roi = scale_roi(self.roi, frame)
-        roi_frame, clipped_roi = crop_roi(frame, active_roi)
+        # Expand ROI for tracking so objects near edges don't flicker
+        # in/out of detection.  The original active_roi is kept for
+        # bbox_center_in_roi logic checks.
+        expanded_roi = expand_roi(active_roi, frame, margin=0.08)
+        roi_frame, clipped_roi = crop_roi(frame, expanded_roi)
 
         x1, y1, _, _ = clipped_roi
 

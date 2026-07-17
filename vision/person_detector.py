@@ -11,7 +11,7 @@ from config import (
 
 from models.person import HandPose, PersonDetection, PersonResult
 from vision.person_action import SkeletonActionBuffer
-from vision.roi import crop_roi, offset_bbox, scale_roi
+from vision.roi import crop_roi, expand_roi, offset_bbox, scale_roi
 
 
 UPPER_BODY_RATIO = 0.55
@@ -46,10 +46,12 @@ class PersonDetector:
     def _detect_persons(self, frame):
         customer_roi = scale_roi(self.customer_roi, frame)
         cashier_roi = scale_roi(self.cashier_roi, frame)
-        roi_frame, clipped_roi = crop_roi(
-            frame,
-            self._combined_roi(customer_roi, cashier_roi),
-        )
+        # Expand the combined ROI for tracking so objects near edges don't
+        # flicker in/out of detection.  Role assignment still uses the
+        # original (unexpanded) ROIs.
+        combined_roi = self._combined_roi(customer_roi, cashier_roi)
+        expanded_roi = expand_roi(combined_roi, frame, margin=0.08)
+        roi_frame, clipped_roi = crop_roi(frame, expanded_roi)
 
         x1, y1, _, _ = clipped_roi
 

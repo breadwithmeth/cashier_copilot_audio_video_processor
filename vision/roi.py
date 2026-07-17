@@ -71,6 +71,27 @@ def clip_roi(roi, frame):
     )
 
 
+def expand_roi(roi, frame, margin=0.08):
+    """
+    Expand a rectangle ROI outward by a margin fraction of frame dimensions.
+    This gives the tracker a buffer zone so objects on ROI edges don't
+    flicker in/out of detection.  The expanded ROI is still clipped to
+    frame bounds.  Returns a rectangle tuple (x1, y1, x2, y2) in pixels.
+    """
+    x1, y1, x2, y2 = clip_roi(roi, frame)
+    h, w = frame.shape[:2]
+
+    dx = int(round((x2 - x1) * margin))
+    dy = int(round((y2 - y1) * margin))
+
+    return (
+        max(0, x1 - dx),
+        max(0, y1 - dy),
+        min(w, x2 + dx),
+        min(h, y2 + dy),
+    )
+
+
 def crop_roi(frame, roi):
     roi = scale_roi(roi, frame)
     x1, y1, x2, y2 = clip_roi(roi, frame)
