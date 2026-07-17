@@ -363,15 +363,8 @@ STREAMS = {
         "audio_url": "rtsp://100.96.0.32:8554/mic",
         "service_profile": "call_center",
 
-        "agent_roi": (
+        "table_roi": (
             100,
-            200,
-            500,
-            700,
-        ),
-
-        "customer_roi": (
-            600,
             200,
             1000,
             700,
@@ -383,15 +376,8 @@ STREAMS = {
         "audio_url": "rtsp://100.96.0.32:8554/mic",
         "service_profile": "call_center",
 
-        "agent_roi": (
+        "table_roi": (
             100,
-            200,
-            500,
-            600,
-        ),
-
-        "customer_roi": (
-            600,
             200,
             1000,
             700,
@@ -403,15 +389,8 @@ STREAMS = {
         "audio_url": "rtsp://100.96.0.32:8554/mic",
         "service_profile": "call_center",
 
-        "agent_roi": (
+        "table_roi": (
             100,
-            200,
-            500,
-            600,
-        ),
-
-        "customer_roi": (
-            600,
             200,
             1000,
             700,
@@ -423,15 +402,8 @@ STREAMS = {
         "audio_url": "rtsp://100.96.0.32:8554/mic",
         "service_profile": "call_center",
 
-        "agent_roi": (
+        "table_roi": (
             100,
-            200,
-            500,
-            600,
-        ),
-
-        "customer_roi": (
-            600,
             200,
             1000,
             700,
@@ -443,15 +415,8 @@ STREAMS = {
         "audio_url": "rtsp://100.96.0.32:8554/mic",
         "service_profile": "call_center",
 
-        "agent_roi": (
+        "table_roi": (
             100,
-            200,
-            500,
-            600,
-        ),
-
-        "customer_roi": (
-            600,
             200,
             1000,
             700,

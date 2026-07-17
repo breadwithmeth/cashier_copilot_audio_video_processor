@@ -20,11 +20,9 @@ UPPER_BODY_RATIO = 0.55
 class DeskDetector:
     def __init__(
         self,
-        agent_roi,
-        customer_roi,
+        table_roi,
     ):
-        self.agent_roi = agent_roi
-        self.customer_roi = customer_roi
+        self.table_roi = table_roi
 
         self.model = YOLO(DESK_MODEL_PATH)
         self.action_buffer = SkeletonActionBuffer()
@@ -44,13 +42,8 @@ class DeskDetector:
         )
 
     def _detect_persons(self, frame):
-        agent_roi = scale_roi(self.agent_roi, frame)
-        customer_roi = scale_roi(self.customer_roi, frame)
-        # Expand the combined ROI for tracking so objects near edges don't
-        # flicker in/out of detection.  Role assignment still uses the
-        # original (unexpanded) ROIs.
-        combined_roi = self._combined_roi(agent_roi, customer_roi)
-        expanded_roi = expand_roi(combined_roi, frame, margin=0.08)
+        table_roi = scale_roi(self.table_roi, frame)
+        expanded_roi = expand_roi(table_roi, frame, margin=0.08)
         roi_frame, clipped_roi = crop_roi(frame, expanded_roi)
 
         x1, y1, _, _ = clipped_roi
@@ -127,8 +120,7 @@ class DeskDetector:
 
                 for role in self._roles_for_bbox(
                     upper_body_bbox,
-                    agent_roi=agent_roi,
-                    customer_roi=customer_roi,
+                    table_roi=table_roi,
                 ):
                     persons.append(
                         PersonDetection(
@@ -220,19 +212,7 @@ class DeskDetector:
 
         return "down"
 
-    @staticmethod
-    def _combined_roi(agent_roi, customer_roi):
-        agent_x1, agent_y1, agent_x2, agent_y2 = agent_roi
-        customer_x1, customer_y1, customer_x2, customer_y2 = customer_roi
-
-        return (
-            min(agent_x1, customer_x1),
-            min(agent_y1, customer_y1),
-            max(agent_x2, customer_x2),
-            max(agent_y2, customer_y2),
-        )
-
-    def _roles_for_bbox(self, bbox, agent_roi, customer_roi):
+    def _roles_for_bbox(self, bbox, table_roi):
         x1, y1, x2, y2 = bbox
         upper_body_center = (
             int((x1 + x2) / 2),
@@ -241,10 +221,8 @@ class DeskDetector:
 
         roles = []
 
-        if self._point_in_roi(upper_body_center, agent_roi):
+        if self._point_in_roi(upper_body_center, table_roi):
             roles.append("agent")
-
-        if self._point_in_roi(upper_body_center, customer_roi):
             roles.append("customer")
 
         return roles
@@ -262,4 +240,4 @@ class DeskDetector:
         x, y = point
         x1, y1, x2, y2 = roi
 
-        return x1 <= x <= x2 and y1 <= y <= x2
+        return x1 <= x <= x2 and y1 <= y <= y2

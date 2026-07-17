@@ -57,13 +57,12 @@ def create_camera(camera_name, cfg):
         if camera_type == "callcenter":
             scan_detector = None
             person_detector = DeskDetector(
-                agent_roi=cfg["agent_roi"],
-                customer_roi=cfg["customer_roi"],
+                table_roi=cfg["table_roi"],
             )
             overlay = Overlay(
                 scan_roi=None,
-                customer_roi=cfg["customer_roi"],
-                cashier_roi=cfg["agent_roi"],
+                customer_roi=cfg["table_roi"],
+                cashier_roi=cfg["table_roi"],
             )
         else:
             scan_detector = ScanDetector(
@@ -136,8 +135,7 @@ def log_camera_rois_once(camera_name, camera, frame):
         }
     else:
         rois = {
-            "customer_roi": camera["person_detector"].customer_roi,
-            "agent_roi": camera["person_detector"].agent_roi,
+            "table_roi": camera["person_detector"].table_roi,
         }
     for name, roi in rois.items():
         print(f"[{camera_name}] {name}: configured={roi} clipped={clip_roi(roi, frame)}")
