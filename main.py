@@ -1,3 +1,4 @@
+import argparse
 import os
 import time
 import cv2
@@ -8,7 +9,7 @@ from config import (STREAMS, TARGET_FPS, SPEECH_RECOGNITION_ENABLED,
                     WHISPER_MODEL, WHISPER_LANGUAGE, WHISPER_BACKEND,
                     WHISPER_COMPUTE_TYPE, SENSEVOICE_MODEL, GIGAAM_MODEL,
                     GIGAAM_DEVICE, TRANSCRIPTS_DIR, VIDEO_ANALYTICS_ENABLED,
-                    AUDIO_ONLY_VISIT_SECONDS)
+                    AUDIO_ONLY_VISIT_SECONDS, ACTIVE_CAMERA_TYPE)
 from config import (DATASET_COLLECTION_ENABLED, DATASET_DIR,
                     DATASET_TRACK_TIMEOUT, ANALYTICS_ROI_FETCH_ENABLED)
 from analytics_rois import apply_backend_rois
@@ -17,13 +18,15 @@ from audio.rtsp_transcriber import RTSPVisitTranscriber
 from dataset.object_collector import ObjectDatasetCollector
 
 from camera.rtsp_reader import RTSPReader
+from camera.video_file_reader import VideoFileReader
 
 from vision.scan_detector import ScanDetector
 from vision.person_detector import PersonDetector
 from vision.roi import clip_roi
 
+from callcenter.desk_detector import DeskDetector
 from logic.checkout_state import CheckoutState
-
+from models.detection import ScanResult
 from ui.overlay import Overlay
 
 
@@ -35,25 +38,46 @@ def create_camera(camera_name, cfg):
     overlay = None
 
     if VIDEO_ANALYTICS_ENABLED:
-        reader = RTSPReader(
-            name=camera_name,
-            url=cfg["url"],
-        )
+        source_url = cfg["url"]
+        is_local_file = not source_url.lower().startswith("rtsp://")
 
-        scan_detector = ScanDetector(
-            roi=cfg["scan_roi"],
-        )
+        if is_local_file:
+            reader = VideoFileReader(
+                name=camera_name,
+                url=source_url,
+            )
+        else:
+            reader = RTSPReader(
+                name=camera_name,
+                url=source_url,
+            )
 
-        person_detector = PersonDetector(
-            customer_roi=cfg["customer_roi"],
-            cashier_roi=cfg["cashier_roi"],
-        )
+        camera_type = cfg.get("type", "checkout")
 
-        overlay = Overlay(
-            cfg["scan_roi"],
-            cfg["customer_roi"],
-            cfg["cashier_roi"],
-        )
+        if camera_type == "callcenter":
+            scan_detector = None
+            person_detector = DeskDetector(
+                agent_roi=cfg["agent_roi"],
+                customer_roi=cfg["customer_roi"],
+            )
+            overlay = Overlay(
+                scan_roi=None,
+                customer_roi=cfg["customer_roi"],
+                cashier_roi=cfg["agent_roi"],
+            )
+        else:
+            scan_detector = ScanDetector(
+                roi=cfg["scan_roi"],
+            )
+            person_detector = PersonDetector(
+                customer_roi=cfg["customer_roi"],
+                cashier_roi=cfg["cashier_roi"],
+            )
+            overlay = Overlay(
+                cfg["scan_roi"],
+                cfg["customer_roi"],
+                cfg["cashier_roi"],
+            )
 
     state = CheckoutState()
     violation_monitor = VideoViolationMonitor(camera_name)
@@ -104,11 +128,17 @@ def log_camera_rois_once(camera_name, camera, frame):
     height, width = frame.shape[:2]
     print(f"[{camera_name}] frame size: {width}x{height}")
 
-    rois = {
-        "scan_roi": camera["scan_detector"].roi,
-        "customer_roi": camera["person_detector"].customer_roi,
-        "cashier_roi": camera["person_detector"].cashier_roi,
-    }
+    if camera["scan_detector"] is not None:
+        rois = {
+            "scan_roi": camera["scan_detector"].roi,
+            "customer_roi": camera["person_detector"].customer_roi,
+            "cashier_roi": camera["person_detector"].cashier_roi,
+        }
+    else:
+        rois = {
+            "customer_roi": camera["person_detector"].customer_roi,
+            "agent_roi": camera["person_detector"].agent_roi,
+        }
     for name, roi in rois.items():
         print(f"[{camera_name}] {name}: configured={roi} clipped={clip_roi(roi, frame)}")
 
@@ -117,11 +147,58 @@ def log_camera_rois_once(camera_name, camera, frame):
 
 def main():
 
+    parser = argparse.ArgumentParser(
+        description="Cashier Copilot video processor")
+    parser.add_argument(
+        "--source",
+        type=str,
+        default=None,
+        help="Local video file path (e.g. video.mp4) or RTSP URL. "
+             "When a local file is given, it overrides the configured "
+             "STREAMS with a single camera using that file.",
+    )
+    args = parser.parse_args()
+
+    # Determine active streams: --source overrides config STREAMS
+    if args.source:
+        is_local_file = not args.source.lower().startswith("rtsp://")
+        if is_local_file:
+            if not os.path.isfile(args.source):
+                print(f"Error: video file not found: {args.source}")
+                return
+        # Build a single-camera config from the first STREAMS entry
+        base_cfg = next(iter(STREAMS.values()))
+        streams = {
+            "LOCAL_VIDEO": {
+                **base_cfg,
+                "url": args.source,
+                "audio_url": None,
+            },
+        }
+        # Disable backend ROI fetch for local files — use configured ROIs as-is
+        use_backend_rois = False
+    else:
+        streams = STREAMS
+        use_backend_rois = ANALYTICS_ROI_FETCH_ENABLED
+
+    # Filter streams based on ACTIVE_CAMERA_TYPE
+    if ACTIVE_CAMERA_TYPE != "both":
+        filtered_streams = {}
+        for name, cfg in streams.items():
+            camera_type = cfg.get("type", "checkout")
+            if camera_type == ACTIVE_CAMERA_TYPE:
+                filtered_streams[name] = cfg
+        streams = filtered_streams
+        
+        if not streams:
+            print(f"No cameras found for type: {ACTIVE_CAMERA_TYPE}")
+            return
+
     cameras = {}
 
     try:
-        for name, cfg in STREAMS.items():
-            if ANALYTICS_ROI_FETCH_ENABLED:
+        for name, cfg in streams.items():
+            if use_backend_rois:
                 cfg = apply_backend_rois(name, cfg)
 
             cameras[name] = create_camera(name, cfg)
@@ -150,14 +227,28 @@ def main():
                         transcriber.start_visit(now)
                     continue
 
+                # Skip cameras whose reader has been stopped (e.g. video EOF)
+                if camera["reader"] is None:
+                    continue
+
                 frame = camera["reader"].get_frame()
 
                 if frame is None:
+                    # For local video files, None means EOF — stop the camera
+                    if isinstance(camera["reader"], VideoFileReader):
+                        print(f"[{camera_name}] Video file ended, stopping camera.")
+                        camera["reader"].stop()
+                        camera["reader"] = None
+                        continue
+                    # For RTSP, None is transient (reconnect handled in reader)
                     continue
 
                 log_camera_rois_once(camera_name, camera, frame)
 
-                scan_result = camera["scan_detector"].detect(frame)
+                if camera["scan_detector"] is not None:
+                    scan_result = camera["scan_detector"].detect(frame)
+                else:
+                    scan_result = ScanResult()
 
                 if camera["dataset_collector"] is not None:
                     camera["dataset_collector"].observe(frame, scan_result.objects)
@@ -197,6 +288,16 @@ def main():
             if key == ord("r"):
                 for camera in cameras.values():
                     camera["state"].reset_product_count()
+
+            # If all video readers are stopped (local files ended), exit
+            if VIDEO_ANALYTICS_ENABLED:
+                active_readers = [
+                    c for c in cameras.values()
+                    if c["reader"] is not None
+                ]
+                if not active_readers:
+                    print("All video sources ended. Exiting.")
+                    break
 
             if frame_interval > 0:
                 elapsed = time.monotonic() - loop_started

@@ -11,6 +11,13 @@ CAMERA_CODE = "cam10"
 CAMERA_NAME = "Checkout camera"
 
 # ===========================
+# ACTIVE CAMERA TYPES
+# ===========================
+
+# Set to "checkout", "callcenter", or "both" to control which cameras run
+ACTIVE_CAMERA_TYPE = "both"  # "checkout", "callcenter", or "both"
+
+# ===========================
 # MODELS
 # ===========================
 
@@ -202,7 +209,7 @@ TARGET_FPS = 5
 VIDEO_ANALYTICS_ENABLED = True
 
 SCAN_CONFIDENCE = 0.2
-PERSON_CONFIDENCE = 0.4
+PERSON_CONFIDENCE = 0.25
 POSE_KEYPOINT_CONFIDENCE = 0.3
 SCAN_CLIP_CLASSIFICATION_ENABLED = True
 SCAN_CLIP_MODEL = "openai/clip-vit-base-patch32"
