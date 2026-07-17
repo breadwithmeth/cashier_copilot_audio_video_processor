@@ -202,6 +202,15 @@ SCAN_SMOLVLM_PROMPT = (
 POSE_MODEL_PATH = "yolo11n-pose.pt"
 
 # ===========================
+# CALL CENTER / DESK DETECTION
+# ===========================
+
+DESK_MODEL_PATH = "yolo11n-pose.pt"
+DESK_CONFIDENCE = 0.25
+DESK_IMAGE_SIZE = (1088, 1920)
+DESK_KEYPOINT_CONFIDENCE = 0.3
+
+# ===========================
 # DETECTION
 # ===========================
 
@@ -322,6 +331,7 @@ DATASET_TRACK_TIMEOUT = 2.0
 
 STREAMS = {
     CAMERA_CODE: {
+        "type": "checkout",
         "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=10&subtype=0",
         "audio_url": "rtsp://100.96.0.32:8554/mic",
         "service_profile": SERVICE_CHECKLIST_PROFILE,
@@ -345,6 +355,106 @@ STREAMS = {
             0,
             1200,
             1300,
+        ),
+    },
+    "desk_1": {
+        "type": "callcenter",
+        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=1&subtype=0",
+        "audio_url": "rtsp://100.96.0.32:8554/mic",
+        "service_profile": SERVICE_CHECKLIST_PROFILE,
+
+        "agent_roi": (
+            100,
+            200,
+            500,
+            700,
+        ),
+
+        "customer_roi": (
+            600,
+            200,
+            1000,
+            700,
+        ),
+    },
+    "desk_2": {
+        "type": "callcenter",
+        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=2&subtype=0",
+        "audio_url": "rtsp://100.96.0.32:8554/mic",
+        "service_profile": SERVICE_CHECKLIST_PROFILE,
+
+        "agent_roi": (
+            100,
+            200,
+            500,
+            600,
+        ),
+
+        "customer_roi": (
+            600,
+            200,
+            1000,
+            700,
+        ),
+    },
+    "desk_3": {
+        "type": "callcenter",
+        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=3&subtype=0",
+        "audio_url": "rtsp://100.96.0.32:8554/mic",
+        "service_profile": SERVICE_CHECKLIST_PROFILE,
+
+        "agent_roi": (
+            100,
+            200,
+            500,
+            600,
+        ),
+
+        "customer_roi": (
+            600,
+            200,
+            1000,
+            700,
+        ),
+    },
+    "desk_4": {
+        "type": "callcenter",
+        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=4&subtype=0",
+        "audio_url": "rtsp://100.96.0.32:8554/mic",
+        "service_profile": SERVICE_CHECKLIST_PROFILE,
+
+        "agent_roi": (
+            100,
+            200,
+            500,
+            600,
+        ),
+
+        "customer_roi": (
+            600,
+            200,
+            1000,
+            700,
+        ),
+    },
+    "desk_5": {
+        "type": "callcenter",
+        "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=5&subtype=0",
+        "audio_url": "rtsp://100.96.0.32:8554/mic",
+        "service_profile": SERVICE_CHECKLIST_PROFILE,
+
+        "agent_roi": (
+            100,
+            200,
+            500,
+            600,
+        ),
+
+        "customer_roi": (
+            600,
+            200,
+            1000,
+            700,
         ),
     },
 }
