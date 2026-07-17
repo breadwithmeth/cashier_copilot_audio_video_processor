@@ -9,6 +9,7 @@ class ServiceProfile(str, Enum):
     ORDINARY_POINT = "ordinary_point"
     DRAFT_WALL = "draft_wall"
     MARKET = "market"
+    CALL_CENTER = "call_center"
 
 
 class EvidenceType(str, Enum):
@@ -139,6 +140,46 @@ DRAFT_HANDOFF_PATTERNS = (
 PROHIBITED_SPEECH_PATTERNS = (
     r"\b(я\s+не\s+знаю|смотрите\s+сами|это\s+не\s+ко\s+мне|вс[её]\s+там|нету)\b",
     r"\b(заткнись|дурак|иди\s+отсюда)\b",
+)
+
+
+# ===========================
+# CALL CENTER PATTERNS
+# ===========================
+
+CALL_CENTER_GREETING_PATTERNS = (
+    r"\b(добрый\s+(день|вечер|утро)|здравствуйте|приветствую|компания\s+\w+)\b",
+    r"\b(слушаю|чем\s+могу\s+помочь|как\s+я\s+могу\s+помочь)\b",
+)
+
+CALL_CENTER_INTRO_PATTERNS = (
+    r"\b(меня\s+зовут|это\s+\w+\s+из\s+компании|представляю\s+компанию)\b",
+    r"\b(звоню\s+по\s+поводу|обращаюсь\s+к\s+вам)\b",
+)
+
+CALL_CENTER_NEED_DISCOVERY_PATTERNS = (
+    r"\b(расскажите|опишите|в\s+ч[её]м\s+проблема|что\s+случилось)\b",
+    r"\b(как\s+я\s+могу\s+помочь|чем\s+могу\s+быть\s+полезен)\b",
+)
+
+CALL_CENTER_SOLUTION_PATTERNS = (
+    r"\b(предлагаю|решение|вариант|давайте\s+сделаем|можем\s+предложить)\b",
+    r"\b(оформим|подключим|отправим|проверим|уточним)\b",
+)
+
+CALL_CENTER_CONFIRMATION_PATTERNS = (
+    r"\b(вс[её]\s+верно|правильно\s+я\s+понимаю|уточню\s+ещ[её]\s+раз)\b",
+    r"\b(повторите|продиктуйте|назовите)\b",
+)
+
+CALL_CENTER_CLOSING_PATTERNS = (
+    r"\b(всего\s+доброго|хорошего\s+дня|до\s+свидания|будем\s+на\s+связи)\b",
+    r"\b(обращайтесь|звоните|если\s+будут\s+вопросы)\b",
+)
+
+CALL_CENTER_EMPATHY_PATTERNS = (
+    r"\b(понимаю|сожалею|приношу\s+извинения|извините\s+за)\b",
+    r"\b(неудобства|неприятности|задержку|ожидание)\b",
 )
 
 
@@ -297,9 +338,76 @@ MARKET_PROFILE = ChecklistProfile(
 )
 
 
+CALL_CENTER_RULES = (
+    ChecklistRule(
+        code="greeting",
+        title="Приветствие и представление",
+        description="Оператор приветствует клиента и представляется.",
+        evidence=(EvidenceType.SPEECH,),
+        speech_patterns=CALL_CENTER_GREETING_PATTERNS + CALL_CENTER_INTRO_PATTERNS,
+        source="Стандарт обслуживания п.1",
+    ),
+    ChecklistRule(
+        code="no_prohibited_phrases",
+        title="Нет запрещенных фраз",
+        description="Оператор не использует грубые или безразличные фразы.",
+        evidence=(EvidenceType.SPEECH,),
+        negative_patterns=PROHIBITED_SPEECH_PATTERNS,
+        source="Стандарт обслуживания п.2",
+    ),
+    ChecklistRule(
+        code="need_discovery",
+        title="Выявление потребности",
+        description="Оператор задает уточняющие вопросы для понимания проблемы.",
+        evidence=(EvidenceType.SPEECH,),
+        speech_patterns=CALL_CENTER_NEED_DISCOVERY_PATTERNS,
+        source="Стандарт обслуживания п.3",
+    ),
+    ChecklistRule(
+        code="empathy",
+        title="Эмпатия и работа с возражениями",
+        description="Оператор проявляет понимание и эмпатию к ситуации клиента.",
+        evidence=(EvidenceType.SPEECH,),
+        speech_patterns=CALL_CENTER_EMPATHY_PATTERNS,
+        source="Стандарт обслуживания п.4",
+    ),
+    ChecklistRule(
+        code="solution_offer",
+        title="Предложение решения",
+        description="Оператор предлагает конкретное решение или варианты действий.",
+        evidence=(EvidenceType.SPEECH,),
+        speech_patterns=CALL_CENTER_SOLUTION_PATTERNS,
+        source="Стандарт обслуживания п.5",
+    ),
+    ChecklistRule(
+        code="confirmation",
+        title="Подтверждение и уточнение",
+        description="Оператор подтверждает понимание и уточняет детали.",
+        evidence=(EvidenceType.SPEECH,),
+        speech_patterns=CALL_CENTER_CONFIRMATION_PATTERNS,
+        source="Стандарт обслуживания п.6",
+    ),
+    ChecklistRule(
+        code="closing",
+        title="Завершение разговора",
+        description="Оператор вежливо завершает разговор и приглашает обращаться снова.",
+        evidence=(EvidenceType.SPEECH,),
+        speech_patterns=CALL_CENTER_CLOSING_PATTERNS,
+        source="Стандарт обслуживания п.7",
+    ),
+)
+
+
+CALL_CENTER_PROFILE = ChecklistProfile(
+    code=ServiceProfile.CALL_CENTER,
+    title="Оператор колл-центра",
+    rules=CALL_CENTER_RULES,
+)
+
+
 CHECKLIST_PROFILES = {
     profile.code.value: profile
-    for profile in (ORDINARY_PROFILE, DRAFT_WALL_PROFILE, MARKET_PROFILE)
+    for profile in (ORDINARY_PROFILE, DRAFT_WALL_PROFILE, MARKET_PROFILE, CALL_CENTER_PROFILE)
 }
 
 

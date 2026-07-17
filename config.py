@@ -298,7 +298,7 @@ GIGAAM_MODEL = "v3_e2e_rnnt"
 GIGAAM_DEVICE = "cpu"
 SENSEVOICE_MODEL = "FunAudioLLM/SenseVoiceSmall"
 TRANSCRIPTS_DIR = Path("transcripts")
-SERVICE_CHECKLIST_PROFILE = "ordinary_point"
+SERVICE_CHECKLIST_PROFILE = "call_center"
 
 ANALYTICS_API_BASE_URL = "https://bmon.gradusy24.kz/api/v1"
 ANALYTICS_API_KEY = "analytics_key_NbeYMFPwY9spmfKd5h56fZsC_sF2RQ1A7-QTAnI1"
@@ -361,7 +361,7 @@ STREAMS = {
         "type": "callcenter",
         "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=1&subtype=0",
         "audio_url": "rtsp://100.96.0.32:8554/mic",
-        "service_profile": SERVICE_CHECKLIST_PROFILE,
+        "service_profile": "call_center",
 
         "agent_roi": (
             100,
@@ -381,7 +381,7 @@ STREAMS = {
         "type": "callcenter",
         "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=2&subtype=0",
         "audio_url": "rtsp://100.96.0.32:8554/mic",
-        "service_profile": SERVICE_CHECKLIST_PROFILE,
+        "service_profile": "call_center",
 
         "agent_roi": (
             100,
@@ -401,7 +401,7 @@ STREAMS = {
         "type": "callcenter",
         "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=3&subtype=0",
         "audio_url": "rtsp://100.96.0.32:8554/mic",
-        "service_profile": SERVICE_CHECKLIST_PROFILE,
+        "service_profile": "call_center",
 
         "agent_roi": (
             100,
@@ -421,7 +421,7 @@ STREAMS = {
         "type": "callcenter",
         "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=4&subtype=0",
         "audio_url": "rtsp://100.96.0.32:8554/mic",
-        "service_profile": SERVICE_CHECKLIST_PROFILE,
+        "service_profile": "call_center",
 
         "agent_roi": (
             100,
@@ -441,7 +441,7 @@ STREAMS = {
         "type": "callcenter",
         "url": "rtsp://admin:LeWfBvc4%21@127.0.0.1:8554/cam/realmonitor?channel=5&subtype=0",
         "audio_url": "rtsp://100.96.0.32:8554/mic",
-        "service_profile": SERVICE_CHECKLIST_PROFILE,
+        "service_profile": "call_center",
 
         "agent_roi": (
             100,
